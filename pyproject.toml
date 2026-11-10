@@ -7,6 +7,8 @@ name = "everrun"
 version = "0.1.0"
 description = "A standalone local-first coding harness with persistent model-driven tasks"
 readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [{name = "Sean Benhur", email = "seanbenhur@gmail.com"}]
 requires-python = ">=3.11"
 dependencies = ["PyJWT[crypto]>=2.10,<3"]
 
