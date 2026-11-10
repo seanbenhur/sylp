@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -240,6 +241,8 @@ def list_models(provider: str) -> list[dict[str, str]]:
             key = _credential(provider)
         except Exception:
             return curated
+        if provider == "antigravity" and key.startswith("ya29."):
+            return curated  # OAuth tokens cannot list models on the Gemini Developer API
         headers = {"Authorization": f"Bearer {key}", "x-goog-api-key": key}
         try:
             response = _request(f"{base}/models", headers=headers)
@@ -293,6 +296,196 @@ def list_models(provider: str) -> list[dict[str, str]]:
 
 def _openai_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [{"type": "function", "function": tool} for tool in tools]
+
+
+# Antigravity OAuth tokens (ya29.*) are issued for Google's Code Assist backend,
+# not the Gemini Developer API. Sending them to generativelanguage.googleapis.com
+# returns 401 UNAUTHENTICATED, so OAuth sign-ins must go through cloudcode-pa.
+ANTIGRAVITY_OAUTH_ENDPOINTS = (
+    "https://daily-cloudcode-pa.sandbox.googleapis.com",
+    "https://cloudcode-pa.googleapis.com",
+)
+_antigravity_project_cache: dict[str, str] = {}
+
+
+def _antigravity_oauth_token() -> str | None:
+    """Return the Antigravity OAuth access token when OAuth is the active credential, else None."""
+    if os.environ.get("ANTIGRAVITY_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+        return None
+    entry = load_auth().get("antigravity", {})
+    if entry.get("api_key") or entry.get("auth_type") != "oauth" or not entry.get("refresh_token"):
+        return None
+    from .auth import antigravity_access_token
+    try:
+        return antigravity_access_token()
+    except Exception:
+        return None
+
+
+def _antigravity_backend(token: str) -> tuple[str, str | None]:
+    """Resolve (base_url, cloud project) on the Code Assist backend, onboarding the user if needed."""
+    metadata = {"ideType": "ANTIGRAVITY", "platform": "PLATFORM_UNSPECIFIED", "pluginType": "GEMINI"}
+    headers = {"Authorization": f"Bearer {token}", "content-type": "application/json",
+               "User-Agent": "antigravity/1.15.8 darwin/arm64"}
+    last_error: Exception | None = None
+    for base in ANTIGRAVITY_OAUTH_ENDPOINTS:
+        try:
+            if base in _antigravity_project_cache:
+                return base, _antigravity_project_cache[base] or None
+            info = _request(f"{base}/v1internal:loadCodeAssist", headers=headers, data={"metadata": metadata})
+            project = info.get("cloudaicompanionProject")
+            if isinstance(project, dict):
+                project = project.get("id")
+            if not project:
+                tier = None
+                for candidate in info.get("allowedTiers") or []:
+                    if isinstance(candidate, dict) and candidate.get("isDefault"):
+                        tier = candidate.get("id")
+                        break
+                if not tier and isinstance(info.get("currentTier"), dict):
+                    tier = info["currentTier"].get("id")
+                operation = _request(f"{base}/v1internal:onboardUser", headers=headers,
+                                     data={"tierId": tier or "legacy-tier", "metadata": metadata})
+                for _ in range(10):
+                    if operation.get("done"):
+                        break
+                    name = operation.get("name")
+                    if not name:
+                        break
+                    time.sleep(2)
+                    operation = _request(f"{base}/v1internal/{name}", headers=headers)
+                response = operation.get("response") or {}
+                project = response.get("cloudaicompanionProject")
+                if isinstance(project, dict):
+                    project = project.get("id")
+            _antigravity_project_cache[base] = str(project or "")
+            return base, str(project) if project else None
+        except Exception as exc:  # try the next endpoint
+            last_error = exc
+    raise RuntimeError(f"Antigravity backend onboarding failed: {last_error}")
+
+
+def _gemini_contents(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert Everrun's OpenAI-style history into Gemini contents."""
+    call_names: dict[str, str] = {}
+    for message in messages:
+        for call in message.get("tool_calls") or []:
+            function = call.get("function") or {}
+            if call.get("id") and function.get("name"):
+                call_names[str(call["id"])] = str(function["name"])
+    contents: list[dict[str, Any]] = []
+
+    def append(role: str, parts: list[dict[str, Any]]) -> None:
+        if not parts:
+            return
+        if contents and contents[-1]["role"] == role:
+            contents[-1]["parts"].extend(parts)
+        else:
+            contents.append({"role": role, "parts": parts})
+
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content")
+        if role == "user":
+            append("user", [{"text": str(content)}])
+        elif role == "assistant":
+            parts: list[dict[str, Any]] = []
+            if isinstance(content, str) and content:
+                parts.append({"text": content})
+            elif isinstance(content, list):  # Anthropic-style blocks, defensively
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text" and block.get("text"):
+                        parts.append({"text": str(block["text"])})
+            for call in message.get("tool_calls") or []:
+                function = call.get("function") or {}
+                if not function.get("name"):
+                    continue
+                try:
+                    arguments = json.loads(function.get("arguments") or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    arguments = {}
+                part: dict[str, Any] = {"functionCall": {"name": function["name"], "args": arguments}}
+                # The Antigravity backend requires replaying the thought signature it
+                # originally returned alongside each function call.
+                if function.get("thought_signature"):
+                    part["thoughtSignature"] = function["thought_signature"]
+                parts.append(part)
+            append("model", parts)
+        elif role == "tool":
+            name = call_names.get(str(message.get("tool_call_id")), "unknown")
+            append("user", [{"functionResponse": {"name": name, "response": {"result": str(content)}}}])
+    return contents
+
+
+def _gemini_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    declarations = [{"name": tool["name"], "description": tool.get("description", ""),
+                     "parameters": tool.get("parameters") or {"type": "object", "properties": {}}}
+                    for tool in tools]
+    return [{"functionDeclarations": declarations}] if declarations else []
+
+
+def _antigravity_oauth_complete(model: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]],
+                                system: str, *, stream_output: bool = True) -> dict[str, Any]:
+    token = _antigravity_oauth_token()
+    if not token:
+        raise RuntimeError("Connect Antigravity with `everrun auth login antigravity` or set GEMINI_API_KEY")
+    base, project = _antigravity_backend(token)
+    request_body: dict[str, Any] = {"contents": _gemini_contents(messages)}
+    if system:
+        request_body["systemInstruction"] = {"parts": [{"text": system}]}
+    if tools:
+        request_body["tools"] = _gemini_tools(tools)
+    body: dict[str, Any] = {"model": model, "request": request_body}
+    if project:
+        body["project"] = project
+    data = _request(f"{base}/v1internal:generateContent",
+                    headers={"Authorization": f"Bearer {token}", "content-type": "application/json",
+                             "User-Agent": "antigravity/1.15.8 darwin/arm64"},
+                    data=body)
+    response = data.get("response") if isinstance(data.get("response"), dict) else data
+    candidates = response.get("candidates") or []
+    if not candidates:
+        raise EmptyModelResponse(f"Antigravity returned no candidates: {json.dumps(response)[:600]}")
+    parts = ((candidates[0].get("content") or {}).get("parts")) or []
+    text_parts: list[str] = []
+    calls: list[dict[str, Any]] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        if isinstance(part.get("text"), str):
+            text_parts.append(part["text"])
+        function_call = part.get("functionCall")
+        if isinstance(function_call, dict) and function_call.get("name"):
+            calls.append({"id": f"call_{len(calls)}_{int(time.time() * 1000) % 10**8}",
+                          "name": str(function_call["name"]),
+                          "arguments": function_call.get("args") or {},
+                          "thought_signature": part.get("thoughtSignature")})
+    text = "".join(text_parts)
+    if not text and not calls:
+        raise EmptyModelResponse(
+            f"Antigravity response ended without text or tool calls. Finish reason: "
+            f"{candidates[0].get('finishReason', '<unknown>')}; response: {json.dumps(response)[:600]}",
+            usage=response.get("usageMetadata"),
+        )
+    if text and stream_output:
+        sys.stdout.write(text + "\n")
+        sys.stdout.flush()
+    history_tool_calls = []
+    for call in calls:
+        function: dict[str, Any] = {"name": call["name"], "arguments": json.dumps(call["arguments"])}
+        if call.get("thought_signature"):
+            function["thought_signature"] = call["thought_signature"]
+        history_tool_calls.append({"id": call["id"], "type": "function", "function": function})
+    assistant_message: dict[str, Any] = {"role": "assistant", "content": text or None}
+    if history_tool_calls:
+        assistant_message["tool_calls"] = history_tool_calls
+    metadata = response.get("usageMetadata") or {}
+    usage = {"input_tokens": metadata.get("promptTokenCount"),
+             "output_tokens": metadata.get("candidatesTokenCount"), "raw": metadata} if metadata else {}
+    return {"text": text, "tool_calls": calls, "raw": response,
+            "assistant_message": assistant_message,
+            "finish_reason": "tool_calls" if calls else "stop",
+            "streamed": bool(text and stream_output), "usage": usage}
 
 
 def _anthropic_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -447,6 +640,8 @@ def complete(provider: str, model: str, messages: list[dict[str, Any]], tools: l
         raise ValueError(f"Unsupported provider {provider!r}; choose from {', '.join(PROVIDERS)}")
     if provider == "openai":
         return _openai_responses_complete(model, messages, tools, system, stream_output=stream_output)
+    if provider == "antigravity" and _antigravity_oauth_token() is not None:
+        return _antigravity_oauth_complete(model, messages, tools, system, stream_output=stream_output)
     base = _base_url(provider)
     key = _credential(provider)
     if provider == "anthropic":
