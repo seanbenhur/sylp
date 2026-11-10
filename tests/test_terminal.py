@@ -5,14 +5,20 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from everrun_harness.terminal import _MAX_TRANSCRIPT_LINES, TerminalUI
+from everrun_harness.terminal import (
+    _MAX_TRANSCRIPT_LINES,
+    _SPINNER_FRAMES,
+    TerminalUI,
+    format_elapsed,
+    wrap_spans,
+)
 
 
 class FakeScreen:
     def __init__(self, height: int = 30, width: int = 120):
         self.height = height
         self.width = width
-        self.calls: list[tuple[int, int, str]] = []
+        self.calls: list[tuple[int, int, str, int]] = []
 
     def getmaxyx(self):
         return (self.height, self.width)
@@ -33,7 +39,12 @@ class FakeScreen:
         pass
 
     def addnstr(self, y, x, text, n, *args):
-        self.calls.append((y, x, text[:n] if n and n > 0 else text))
+        attr = args[0] if args else 0
+        self.calls.append((y, x, text[:n] if n and n > 0 else text, attr))
+
+
+def rendered_text(screen: FakeScreen) -> str:
+    return "\n".join(text for _, _, text, _ in screen.calls)
 
 
 class TerminalTests(unittest.TestCase):
@@ -158,13 +169,13 @@ class TerminalTests(unittest.TestCase):
 
         ui._draw()
 
-        rendered = "\n".join(text for _, _, text in ui.screen.calls)
+        rendered = rendered_text(ui.screen)
         self.assertIn("Sessions", rendered)
         self.assertIn("aaa", rendered)
         self.assertIn("Changes", rendered)
         self.assertIn("app.py", rendered)
         self.assertIn("1 need input", rendered)
-        transcript_x = [x for _, x, text in ui.screen.calls if "Everrun> hello" in text]
+        transcript_x = [x for _, x, text, _ in ui.screen.calls if "hello" in text]
         self.assertTrue(transcript_x and transcript_x[0] >= 26)
 
 
@@ -182,9 +193,9 @@ class TerminalTests(unittest.TestCase):
 
         ui._draw()
 
-        rendered = "\n".join(text for _, _, text in ui.screen.calls)
-        self.assertIn("Everrun> on it", rendered)
-        self.assertIn("Everrun> build passed", rendered)
+        rendered = rendered_text(ui.screen)
+        self.assertIn("on it", rendered)
+        self.assertIn("build passed", rendered)
         self.assertNotIn("building project", rendered)
         self.assertNotIn("[tool run_command running]", rendered)
         self.assertIn("tool lines hidden · F4 to show", rendered)
@@ -196,13 +207,13 @@ class TerminalTests(unittest.TestCase):
         ui.write("\n[tool read_file]\nfile contents here\n")
 
         ui._draw()
-        hidden = "\n".join(text for _, _, text in ui.screen.calls)
+        hidden = rendered_text(ui.screen)
         self.assertNotIn("file contents here", hidden)
 
         ui.screen.calls.clear()
         ui.show_tool_calls = True
         ui._draw()
-        shown = "\n".join(text for _, _, text in ui.screen.calls)
+        shown = rendered_text(ui.screen)
         self.assertIn("[tool read_file]", shown)
         self.assertIn("file contents here", shown)
         self.assertNotIn("hidden · F4", shown)
@@ -234,10 +245,157 @@ class TerminalTests(unittest.TestCase):
 
         ui._draw()
 
-        rendered = "\n".join(text for _, _, text in ui.screen.calls)
-        self.assertIn("Everrun> first", rendered)
-        self.assertIn("Everrun> second", rendered)
+        rendered = rendered_text(ui.screen)
+        self.assertIn("first", rendered)
+        self.assertIn("second", rendered)
         self.assertNotIn("output", rendered)
+
+    def test_chat_prefixes_render_as_markers(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.lines = ["You> fix the parser", "Everrun> sure, looking now"]
+        ui._tool_lines = [False, False]
+
+        ui._draw()
+
+        rendered = rendered_text(ui.screen)
+        self.assertIn("❯", rendered)
+        self.assertIn("•", rendered)
+        self.assertIn("fix the parser", rendered)
+        self.assertIn("sure, looking now", rendered)
+        self.assertNotIn("You> fix", rendered)
+        self.assertNotIn("Everrun> sure", rendered)
+
+    def test_markdown_bold_code_and_headings_get_styles(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.lines = ["Everrun> use **pytest** and `uv run` next", "## Summary"]
+        ui._tool_lines = [False, False]
+
+        ui._draw()
+
+        rendered = rendered_text(ui.screen)
+        self.assertNotIn("**", rendered.replace("** ", ""))  # markers are stripped
+        bold_calls = [text for _, _, text, attr in ui.screen.calls if attr & curses.A_BOLD]
+        code_calls = [text for _, _, text, attr in ui.screen.calls if attr & curses.A_REVERSE]
+        self.assertIn("pytest", bold_calls)
+        self.assertIn("uv run", code_calls)
+        self.assertIn("Summary", bold_calls)
+
+    def test_code_fences_render_dim_and_toggle(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.lines = ["Everrun> here:", "```python", "print(1)", "```", "done"]
+        ui._tool_lines = [False] * 5
+
+        ui._draw()
+
+        by_text = {text: attr for _, _, text, attr in ui.screen.calls}
+        self.assertTrue(by_text["  print(1)"] & curses.A_DIM)
+        self.assertEqual(by_text["done"], curses.A_NORMAL)
+        self.assertTrue(by_text["```python"] & curses.A_DIM)
+
+    def test_busy_status_shows_spinner_and_elapsed_timer(self):
+        ui = TerminalUI("Everrun")
+        ui.status = "Thinking · turn 1"
+        ui._status_started = 100.0
+
+        text, busy = ui.header_status(now=165.0)
+
+        self.assertTrue(busy)
+        self.assertIn(text[0], _SPINNER_FRAMES)
+        self.assertIn("Thinking · turn 1", text)
+        self.assertIn("1m 05s", text)
+
+    def test_idle_status_shows_static_dot_without_timer(self):
+        ui = TerminalUI("Everrun")
+        ui.status = "Waiting for your message"
+        ui._status_started = 100.0
+
+        text, busy = ui.header_status(now=200.0)
+
+        self.assertFalse(busy)
+        self.assertEqual(text, "● Waiting for your message")
+
+    def test_format_elapsed_compact_style(self):
+        self.assertEqual(format_elapsed(0.4), "0s")
+        self.assertEqual(format_elapsed(12), "12s")
+        self.assertEqual(format_elapsed(295), "4m 55s")
+
+    def test_wrap_spans_preserves_text_and_styles(self):
+        rows = wrap_spans([("hello ", "text"), ("brave", "bold"), (" world", "text")], 9)
+
+        self.assertEqual("".join(ch for row in rows for ch, _ in row), "hello brave world")
+        styled = {"".join(ch for ch, key in row if key == "bold") for row in rows} - {""}
+        self.assertEqual(styled, {"brave"})
+
+    def test_wrap_spans_hard_breaks_long_words(self):
+        rows = wrap_spans([("abcdefghij", "text")], 4)
+
+        self.assertEqual(["".join(ch for ch, _ in row) for row in rows], ["abcd", "efgh", "ij"])
+
+    def test_composer_shows_marker_hints_and_status_row(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [], diff_summary=lambda: "")
+
+        ui._draw()
+
+        top = 30 - 7
+        prompt_calls = [(y, text) for y, _, text, _ in ui.screen.calls if text == "❯ "]
+        self.assertIn((top + 1, "❯ "), prompt_calls)
+        hints = [text for y, _, text, _ in ui.screen.calls if y == top + 5]
+        self.assertTrue(any("F2 sessions" in text and "F4 tools" in text for text in hints))
+        footer = [text for y, _, text, _ in ui.screen.calls if y == top + 6]
+        self.assertTrue(any("/repo" in text for text in footer))
+
+    def test_default_prompt_shows_only_the_marker(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.prompt = "You>"  # rstripped by input()
+
+        ui._draw()
+
+        top = 30 - 7
+        composer_text = [text for y, _, text, _ in ui.screen.calls if y == top + 1 and text]
+        self.assertEqual(composer_text, ["❯ "])
+        ui._record_input("hello")
+        self.assertIn("You> hello", ui.lines)
+
+    def test_approval_prompt_and_lines_are_highlighted(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.lines = ["Allow command in task worktree?", "  ls -la"]
+        ui._tool_lines = [False, False]
+        ui.prompt = "[y/N] "
+
+        ui._draw()
+
+        by_text = {text: attr for _, _, text, attr in ui.screen.calls}
+        self.assertTrue(by_text["Allow command in task worktree?"] & curses.A_BOLD)
+        self.assertIn("[y/N] ", by_text)
+
+    def test_multiline_prompt_keeps_line_flags_aligned(self):
+        class KeyScreen:
+            def getmaxyx(self):
+                return (30, 120)
+
+            def get_wch(self):
+                return "\x03"
+
+        ui = TerminalUI("Everrun")
+        ui.screen = KeyScreen()
+        with patch.object(ui, "_draw"):
+            ui.input("Allow command in task worktree?\n  ls -la\n[y/N] ")
+
+        self.assertEqual(len(ui.lines), len(ui._tool_lines))
+        self.assertEqual(ui.prompt, "[y/N] ")
 
 
 if __name__ == "__main__":

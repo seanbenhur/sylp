@@ -100,10 +100,15 @@ class FullTUIProviderIntegrationTests(unittest.TestCase):
             os.close(slave_fd)
             transcript = bytearray()
             try:
-                self._read_until(process, master_fd, transcript, b"You> ", timeout=15)
+                self._read_until(process, master_fd, transcript, "❯ ".encode("utf-8"), timeout=15)
                 os.write(master_fd, b"hello\r")
                 self._read_until(process, master_fd, transcript, b"streamed this reply.", timeout=20)
                 self._read_until(process, master_fd, transcript, b"Waiting for your message", timeout=5)
+                # Tool output hides behind the F4 toggle by default; reveal it
+                # so the streamed file listing shows up in the transcript.
+                # xterm-256color terminfo maps F4 to SS3 S (\x1bOS).
+                os.write(master_fd, b"\x1bOS")
+                self._read_until(process, master_fd, transcript, b"hello.py", timeout=5)
                 time.sleep(0.2)
                 os.write(master_fd, b"/exit\r")
                 self._read_until(process, master_fd, transcript, b"Session paused. Resume with:", timeout=5)
