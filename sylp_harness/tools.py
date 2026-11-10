@@ -46,9 +46,10 @@ def _stop_process(process: subprocess.Popen[Any]) -> tuple[Any, Any]:
 
 
 def _run_command(command: str, root: Path, timeout: int, on_output: Any | None,
-                 on_checkpoint: Any | None = None) -> str:
+                 on_checkpoint: Any | None = None, env: dict[str, str] | None = None) -> str:
     process = subprocess.Popen(command, cwd=root, shell=True, stdout=subprocess.PIPE,
-                               stderr=subprocess.STDOUT, bufsize=0, start_new_session=(os.name == "posix"))
+                               stderr=subprocess.STDOUT, bufsize=0, env=env,
+                               start_new_session=(os.name == "posix"))
     output: list[str] = []
     saved_chars = 0
     truncated = False
@@ -187,9 +188,22 @@ def _search_files(root: Path, query: str, path: str | None = None) -> str:
 
 def execute_tool(name: str, arguments: dict[str, Any], root: Path, *, auto_approve: bool = False,
                  on_output: Any | None = None, on_checkpoint: Any | None = None,
-                 extensions: Any | None = None, sandbox: Any | None = None) -> str:
+                 extensions: Any | None = None, sandbox: Any | None = None,
+                 permissions: Any | None = None) -> str:
+    if permissions is None:
+        # Direct callers (reports, tests) get a standalone engine. Interactive
+        # keeps the historical behavior of asking on stdin.
+        from .permissions import PermissionEngine
+        permissions = PermissionEngine(auto_approve=auto_approve, interactive=True)
     if extensions is not None and extensions.handles(name):
+        denial = permissions.check(name, arguments)
+        if denial:
+            return denial
         return _clip(extensions.call(name, arguments, root))
+    if name in {"list_files", "read_file", "write_file", "apply_patch", "search_files"}:
+        denial = permissions.check(name, arguments)
+        if denial:
+            return denial
     if name == "list_files":
         return _list_files(root, str(arguments.get("path") or "."))
     if name == "read_file":
@@ -230,23 +244,30 @@ def execute_tool(name: str, arguments: dict[str, Any], root: Path, *, auto_appro
     if name == "run_command":
         command = str(arguments["command"])
         timeout = max(1, min(600, int(arguments.get("timeout_seconds", 120))))
-        if not auto_approve:
-            prompt = f"\nAllow command in task worktree?\n  {command}"
-            if sandbox is not None:
-                from .sandbox import describe
-                prompt += f"\n  [sandbox: {describe(sandbox)}]"
-            try:
-                answer = input(prompt + "\n[y/N] ").strip().lower()
-            except EOFError:
-                answer = ""
-            if answer in {"/exit", "/quit"}:
-                raise KeyboardInterrupt
-            if answer not in {"y", "yes"}:
-                return "Command denied by user. Continue using other tools or ask for guidance."
+        prompt = f"\nAllow command in task worktree?\n  {command}"
+        if sandbox is not None:
+            from .sandbox import describe
+            prompt += f"\n  [sandbox: {describe(sandbox)}]"
+        denial = permissions.check("run_command", arguments, prompt=prompt)
+        if denial:
+            return denial
         note = None
         if sandbox is not None:
-            from .sandbox import wrap_command
-            command, note = wrap_command(command, root, sandbox)
-        result = _run_command(command, root, timeout, on_output, on_checkpoint)
+            from .sandbox import sandbox_env, wrap_command
+            command, applied = wrap_command(command, root, sandbox)
+            if not applied:
+                # Sylp never falls back to unsandboxed execution on its own:
+                # this needs an explicit, interactive yes and is never
+                # auto-approved.
+                if not permissions.confirm_unsandboxed(str(arguments["command"])):
+                    return ("Command not run: no working sandbox backend, and unsandboxed "
+                            "execution was not approved. Install bubblewrap (Linux), run on "
+                            "macOS, or set SYLP_SANDBOX=off to disable the sandbox explicitly.")
+                note = "Warning: running WITHOUT sandboxing (no working backend; approved by user)."
+        from .sandbox import scrubbed_env
+        env = scrubbed_env()
+        if sandbox is not None:
+            env.update(sandbox_env(sandbox))
+        result = _run_command(command, root, timeout, on_output, on_checkpoint, env=env)
         return f"{note}\n{result}" if note else result
     raise ValueError(f"Unknown tool: {name}")

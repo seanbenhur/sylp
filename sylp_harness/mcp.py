@@ -72,7 +72,10 @@ class MCPServer:
         self._reader: threading.Thread | None = None
 
     def start(self) -> None:
-        env = dict(os.environ)
+        # Servers get a secret-scrubbed environment; credentials a server
+        # needs belong in its explicit "env" config block.
+        from .sandbox import scrubbed_env
+        env = scrubbed_env()
         for key, value in (self.spec.get("env") or {}).items():
             env[str(key)] = str(value)
         argv = [str(self.spec["command"]), *[str(a) for a in self.spec.get("args", [])]]

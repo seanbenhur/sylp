@@ -370,10 +370,14 @@ def _main(*, ui: TerminalUI | None = None) -> None:
                 raise RuntimeError(f"No report exists for {args.task_id}")
             print(path.read_text(encoding="utf-8"))
         elif args.command == "mcp":
-            from . import mcp as mcp_module
+            from . import mcp as mcp_module, trust
             from .extensions import state_home
+            home = state_home()
             repo = Path(args.repo).resolve()
-            config = mcp_module.load_config(state_home(), repo)
+            if not trust.ensure_repo_trusted(home, repo):
+                print("Repository extensions are not trusted; skipping .sylp/mcp.json.")
+                repo = None
+            config = mcp_module.load_config(home, repo)
             if not config:
                 print("No MCP servers configured. See docs/extensions.md for the mcp.json format.")
             manager = mcp_module.MCPManager.start(config)
@@ -392,11 +396,16 @@ def _main(*, ui: TerminalUI | None = None) -> None:
             finally:
                 manager.close()
         elif args.command == "plugins":
+            from . import trust
             from .extensions import state_home
             from .plugins import PluginRegistry, discover
+            home = state_home()
             repo = Path(args.repo).resolve()
-            registry = PluginRegistry().load(state_home(), repo)
-            files = discover(state_home(), repo)
+            if not trust.ensure_repo_trusted(home, repo):
+                print("Repository extensions are not trusted; skipping .sylp/plugins/.")
+                repo = None
+            registry = PluginRegistry().load(home, repo)
+            files = discover(home, repo)
             if not files:
                 print("No plugins found. Add .py files to ~/.sylp/plugins/ or <repo>/.sylp/plugins/.")
             for schema in registry.schemas():
@@ -437,10 +446,10 @@ def _main(*, ui: TerminalUI | None = None) -> None:
             policy = policy_from_env()
             print(f"mode: {policy.mode}\nbackend: {describe(policy)}")
             if args.test:
-                command, note = wrap_command("echo sylp-sandbox-ok", Path.cwd(), policy)
+                command, applied = wrap_command("echo sylp-sandbox-ok", Path.cwd(), policy)
                 result = subprocess.run(command, shell=True, text=True, capture_output=True, timeout=30)
-                if note:
-                    print(note)
+                if not applied:
+                    print("no working sandbox backend; the probe ran WITHOUT sandboxing")
                 print(result.stdout.strip() or result.stderr.strip() or f"exit {result.returncode}")
         elif args.command == "quit":
             print("No prompt entered; no session started.")

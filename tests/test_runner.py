@@ -213,7 +213,10 @@ class RunnerIntegrationTests(unittest.TestCase):
                 runner.complete = complete
                 runner.run_task({task_id!r})
             """)
-            env = {**os.environ, "SYLP_HOME": str(state)}
+            # The side-effect files live outside the worktree, so this test
+            # opts out of the sandbox explicitly rather than depending on a
+            # shared /tmp.
+            env = {**os.environ, "SYLP_HOME": str(state), "SYLP_SANDBOX": "off"}
             worker = subprocess.Popen([sys.executable, "-c", start_script], cwd=root, env=env,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             shell_group = None
