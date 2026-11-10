@@ -135,7 +135,8 @@ class TerminalUI:
         self._list_sessions: Callable[[], list[dict[str, Any]]] | None = None
         self._diff_summary: Callable[[], str] | None = None
         self._panel_store: Any = None
-        self.show_rail = True
+        # Keep the transcript full-width until the user opens a side pane.
+        self.show_rail = False
         self.show_changes = False
         self._rail_cache: list[dict[str, Any]] = []
         self._rail_fetched = 0.0
