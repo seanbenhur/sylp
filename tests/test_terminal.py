@@ -126,6 +126,21 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual(ui._changes_width(120), 0)
         self.assertEqual(ui._transcript_width(), 118)
 
+    def test_panels_are_hidden_by_default_and_open_on_toggle(self):
+        ui = TerminalUI("Everrun")
+        ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [], diff_summary=lambda: "")
+
+        self.assertFalse(ui.show_rail)
+        self.assertFalse(ui.show_changes)
+        self.assertEqual(ui._rail_width(120), 0)
+        self.assertEqual(ui._changes_width(120), 0)
+
+        ui.show_rail = not ui.show_rail  # F2
+        ui.show_changes = not ui.show_changes  # F3
+
+        self.assertEqual(ui._rail_width(120), 26)
+        self.assertEqual(ui._changes_width(120), 38)
+
     def test_changes_pane_wraps_diff_summary_to_panel_width(self):
         ui = TerminalUI("Everrun")
         ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [],
@@ -153,7 +168,7 @@ class TerminalTests(unittest.TestCase):
             value = ui.input("You> ")
 
         self.assertEqual(value, "/exit")
-        self.assertFalse(ui.show_rail)
+        self.assertTrue(ui.show_rail)
         self.assertTrue(ui.show_changes)
 
     def test_draw_renders_rail_changes_and_attention_header(self):
@@ -164,6 +179,7 @@ class TerminalTests(unittest.TestCase):
             {"id": "aaa", "goal": "Fix bug", "status": "running"},
             {"id": "bbb", "goal": "Docs", "status": "waiting_for_input"},
         ], diff_summary=lambda: " app.py | 5 +++--")
+        ui.show_rail = True
         ui.show_changes = True
         ui.lines = ["Everrun> hello"]
 
