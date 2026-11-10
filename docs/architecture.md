@@ -11,6 +11,10 @@ Everrun is a standalone, local-first coding harness. It talks to model providers
 | `everrun_harness/providers.py` | Provider adapters: credentials, model listing, and one `complete()` entry point per provider family (OpenAI Responses API, Anthropic Messages API, OpenAI-compatible chat completions, Antigravity Code Assist). |
 | `everrun_harness/auth.py` | Browser OAuth sign-in for ChatGPT and Google Antigravity, token refresh, and reuse of an existing Antigravity IDE session when present. |
 | `everrun_harness/tools.py` | The tool surface the model can call: file reads/writes, unified-diff patches, search, git status/diff, and shell commands with approval. |
+| `everrun_harness/sandbox.py` | Best-effort confinement of approved shell commands via bubblewrap (Linux) or sandbox-exec (macOS), with a one-time backend probe and honest degradation. |
+| `everrun_harness/mcp.py` | Stdlib-only MCP client: stdio JSON-RPC handshake, tool listing, and tool calls to configured MCP servers. |
+| `everrun_harness/plugins.py` | Discovery, validation, and dispatch for local Python plugins that add model tools. |
+| `everrun_harness/extensions.py` | Combines MCP servers and plugins into one tool registry per task run. |
 | `everrun_harness/store.py` | SQLite persistence for tasks, events, and conversation messages. WAL mode, owner-only file permissions. |
 | `everrun_harness/git.py` | Worktree and branch preparation for each task. |
 | `everrun_harness/terminal.py` | The full-screen interactive UI (transcript, input, status line). |
@@ -41,6 +45,8 @@ Shell tool output is checkpointed to the event log as it streams (on a size and 
 
 `list_files`, `read_file`, `write_file`, `apply_patch`, `search_files`, `git_status`, `git_diff`, and `run_command`. `run_command` requires interactive approval unless the task was started with `--auto-approve` (or `EVERUN_AUTO_APPROVE=1` for interactive sessions). Approvals are per command; there is no persistent allowlist.
 
+At task start the runner also loads configured MCP servers and local plugins and appends their schemas to the tool list; extension tools are dispatched through the same result-checkpointing path as built-ins. MCP servers are subprocesses terminated when the task pauses or finishes; plugins run in-process. A failed MCP server or plugin is skipped and recorded in an `extensions_loaded` event rather than stopping the task. See [Extensions](extensions.md).
+
 ## Isolation model
 
-Worktrees keep task edits out of your checkout, but Everrun is not a security sandbox: shell commands run as you, on your machine. Review commands before approving them, use repositories you trust, and read the report and diff before merging.
+Worktrees keep task edits out of your checkout. On top of that, approved shell commands can run sandboxed (bubblewrap or sandbox-exec): writes are limited to the worktree, the repository's Git directory, and `/tmp`, everything else is read-only, and network access can be disabled. This is best-effort confinement rather than a hard security boundary, and plugins are not confined by it. Review commands before approving them, use repositories you trust, and read the report and diff before merging.

@@ -14,6 +14,9 @@ Everrun opens an interactive coding session in your repository. It runs its own 
 - **Keeps task edits separate.** Every task gets its own Git branch and worktree.
 - **Starts from your current checkout.** A new task includes tracked edits and untracked files already in the repository, so it can work on the code you have open before you commit it.
 - **Uses models directly.** Connect OpenAI, Anthropic, OpenRouter, or an OpenAI-compatible endpoint. Everrun does not launch Codex CLI or Claude Code.
+- **Sandboxes shell commands.** Approved commands can be confined to the task worktree with the rest of the filesystem read-only (bubblewrap on Linux, sandbox-exec on macOS), with optional network cut-off.
+- **Speaks MCP.** Stdio Model Context Protocol servers configured in `mcp.json` add their tools to the model loop as `mcp__<server>__<tool>`.
+- **Loads local plugins.** Drop a Python file in `~/.everrun/plugins/` or `<repo>/.everrun/plugins/` to add your own tools.
 - **Hands back reviewable work.** A completed task includes a report with its goal, criteria, agent summary, diff summary, and provider-reported token usage when available. Everrun does not infer billed cost or merge changes for you.
 
 ## Workflow
@@ -138,7 +141,7 @@ everrun run "Add pagination to the projects API" \
   --accept "Pagination has tests for first, middle, and final pages"
 ```
 
-Shell commands require approval by default. Add `--auto-approve` to let the model run commands without asking each time:
+Shell commands require approval by default. When a sandbox backend is available, approved commands run confined to the task worktree with the rest of the filesystem read-only; the approval prompt shows the active backend. See [docs/extensions.md](docs/extensions.md) for `EVERUN_SANDBOX` modes and limits. Add `--auto-approve` to let the model run commands without asking each time:
 
 ```sh
 everrun run "Fix the failing tests" --repo ~/code/my-project \
@@ -174,7 +177,7 @@ Set `EVERUN_HOME` to move Everrun's database, credentials, and reports.
 
 Provider requests allow up to 15 minutes for a response by default. Set `EVERUN_REQUEST_TIMEOUT` to a value from 60 to 3600 seconds to change that limit.
 
-The worktree keeps changes isolated from your current checkout, but it is not a security sandbox. Shell commands run on your machine. Review commands before approving them, use repositories you trust, and inspect the report and diff before merging. Everrun records model-reported checks but does not independently validate them.
+The worktree keeps changes isolated from your current checkout. Shell commands can additionally be sandboxed (see [docs/extensions.md](docs/extensions.md)), but that confinement is best-effort: review commands before approving them, use repositories you trust, and inspect the report and diff before merging. Everrun records model-reported checks but does not independently validate them.
 
 See the [comparison protocol](benchmarks/PROTOCOL.md) for a reproducible Everrun vs. Codex evaluation. Everrun has not been shown to outperform Codex until that protocol has been run and its results published.
 
@@ -183,6 +186,7 @@ See the [comparison protocol](benchmarks/PROTOCOL.md) for a reproducible Everrun
 - [Architecture](docs/architecture.md) - module map, task lifecycle, the model loop, and interruption recovery
 - [Providers](docs/providers.md) - sign-in paths, model listing, and per-provider behavior
 - [Configuration](docs/configuration.md) - state layout, environment variables, safety, and development setup
+- [Extensions](docs/extensions.md) - shell sandbox, MCP servers, and local plugins
 
 ## License
 
