@@ -250,6 +250,22 @@ class TerminalTests(unittest.TestCase):
         self.assertIn("second", rendered)
         self.assertNotIn("output", rendered)
 
+    def test_chat_view_does_not_render_speaker_names(self):
+        ui = TerminalUI("repo · provider/model")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.lines = ["Type /help for commands.", "You> fix the parser", "Everrun> done"]
+        ui._tool_lines = [False, False, False]
+
+        ui._draw()
+
+        rendered = rendered_text(ui.screen)
+        self.assertIn("Type /help for commands.", rendered)
+        self.assertNotIn("Everrun", rendered)
+        self.assertNotIn("You>", rendered)
+        self.assertIn("❯", rendered)
+        self.assertIn("•", rendered)
+
     def test_chat_prefixes_render_as_markers(self):
         ui = TerminalUI("Everrun")
         ui.screen = FakeScreen()
