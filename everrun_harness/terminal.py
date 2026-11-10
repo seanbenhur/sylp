@@ -110,7 +110,7 @@ class TerminalUI:
         self.status = "Ready"
         self._status_started = time.monotonic()
         self.screen: Any = None
-        self.lines = ["Everrun is ready. Type /help for commands.", ""]
+        self.lines = ["Type /help for commands.", ""]
         # Parallel to self.lines: True for lines that belong to a tool block
         # (the [tool ...] markers plus any streamed tool output between them).
         self._tool_lines = [False, False]
