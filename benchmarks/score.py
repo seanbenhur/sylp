@@ -18,7 +18,7 @@ METRICS = (
 )
 USAGE_FIELDS = ("input_tokens", "output_tokens", "billed_cost_usd")
 REQUIRED = ("task", "arm", "run_number", "acceptance_pass", "wall_seconds", "human_interventions")
-ARMS = {"everrun", "codex"}
+ARMS = {"sylp", "codex"}
 
 
 def _read_records(paths: list[Path]) -> list[dict[str, Any]]:
@@ -122,7 +122,7 @@ def _ratio(value: dict[str, int]) -> str:
 
 def render_markdown(summary: dict[str, Any]) -> str:
     lines = [
-        "# Everrun benchmark results",
+        "# Sylp benchmark results",
         "",
         f"Run records: {summary['runs']}",
         "",

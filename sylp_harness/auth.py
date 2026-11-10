@@ -40,7 +40,7 @@ def _verify_id_token(id_token: str, client_id: str, nonce: str) -> dict[str, Any
     try:
         import jwt
     except ImportError as exc:
-        raise RuntimeError("OpenAI sign-in needs PyJWT with cryptography. Reinstall Everrun after updating it.") from exc
+        raise RuntimeError("OpenAI sign-in needs PyJWT with cryptography. Reinstall Sylp after updating it.") from exc
     key = jwt.PyJWKClient("https://auth.openai.com/.well-known/jwks.json").get_signing_key_from_jwt(id_token)
     claims = jwt.decode(id_token, key.key, algorithms=["RS256", "ES256"], audience=client_id,
                         issuer="https://auth.openai.com", options={"require": ["sub", "exp", "iat", "nonce"]})
@@ -60,7 +60,7 @@ class _CallbackHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         type(self).result = {key: values[-1] for key, values in urllib.parse.parse_qs(parsed.query).items()}
-        body = b"Everrun sign-in received. You can close this tab and return to the terminal."
+        body = b"Sylp sign-in received. You can close this tab and return to the terminal."
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -98,7 +98,7 @@ def login_openai() -> None:
         if entry.get("email"):
             parameters["login_hint"] = entry["email"]
     else:
-        parameters["agent_name_hint"] = "Everrun"
+        parameters["agent_name_hint"] = "Sylp"
 
     handler = type("CallbackHandler", (_CallbackHandler,), {"result": {}})
     try:
@@ -139,7 +139,7 @@ def login_openai() -> None:
                              "redirect_uri": REDIRECT_URI, "resource": RESOURCE})
     granted = str(token_data.get("scope", "")).split()
     if "chatgpt.tokens.use.direct" not in granted:
-        raise RuntimeError("ChatGPT plan inference was not authorized; Everrun did not save these credentials")
+        raise RuntimeError("ChatGPT plan inference was not authorized; Sylp did not save these credentials")
     id_token = token_data.get("id_token")
     if not id_token:
         raise RuntimeError("OpenAI did not return an ID token")
@@ -385,4 +385,4 @@ def antigravity_access_token() -> str:
     key = os.environ.get("ANTIGRAVITY_API_KEY") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY") or entry.get("api_key")
     if key:
         return str(key)
-    raise RuntimeError("Connect Antigravity with `everrun auth login antigravity` or set GEMINI_API_KEY")
+    raise RuntimeError("Connect Antigravity with `sylp auth login antigravity` or set GEMINI_API_KEY")

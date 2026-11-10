@@ -7,17 +7,17 @@ with SQLite FTS5 (or a LIKE fallback when FTS5 is unavailable) and injected
 into the system prompt at task start and resume.
 
 Phase 2 (optional, off unless configured): a local OpenAI-compatible
-embeddings endpoint (``EVERUN_EMBED_URL``/``EVERUN_EMBED_MODEL``, e.g. Ollama)
+embeddings endpoint (``SYLP_EMBED_URL``/``SYLP_EMBED_MODEL``, e.g. Ollama)
 adds vector similarity, fused with FTS5 through reciprocal rank fusion.
 Vectors are indexed with sqlite-vec when that package is installed and fall
 back to a Python scan otherwise. A local OpenAI-compatible chat endpoint
-(``EVERUN_MEMORY_EXTRACT_URL``/``EVERUN_MEMORY_EXTRACT_MODEL``) can run the
+(``SYLP_MEMORY_EXTRACT_URL``/``SYLP_MEMORY_EXTRACT_MODEL``) can run the
 extraction pass instead of the session provider; on any failure extraction
 falls back to the session provider, and retrieval falls back to FTS5 only.
 
 Memory is best-effort: extraction is model-generated and can be wrong or
 stale, so recalled memories are injected with a verify-before-relying caveat.
-Set ``EVERUN_MEMORY=0`` to disable extraction and recall entirely.
+Set ``SYLP_MEMORY=0`` to disable extraction and recall entirely.
 """
 
 from __future__ import annotations
@@ -46,19 +46,19 @@ EmbedFn = Callable[[list[str]], list[list[float]]]
 
 
 def memory_disabled() -> bool:
-    return os.environ.get("EVERUN_MEMORY", "").lower() in {"0", "false", "off", "no"}
+    return os.environ.get("SYLP_MEMORY", "").lower() in {"0", "false", "off", "no"}
 
 
 def _embed_config() -> tuple[str, str] | None:
-    url = os.environ.get("EVERUN_EMBED_URL", "").strip()
-    model = os.environ.get("EVERUN_EMBED_MODEL", "").strip()
+    url = os.environ.get("SYLP_EMBED_URL", "").strip()
+    model = os.environ.get("SYLP_EMBED_MODEL", "").strip()
     return (url.rstrip("/"), model) if url and model else None
 
 
 def _extractor_config() -> tuple[str, str, str | None] | None:
-    url = os.environ.get("EVERUN_MEMORY_EXTRACT_URL", "").strip()
-    model = os.environ.get("EVERUN_MEMORY_EXTRACT_MODEL", "").strip()
-    key = os.environ.get("EVERUN_MEMORY_EXTRACT_KEY", "").strip() or None
+    url = os.environ.get("SYLP_MEMORY_EXTRACT_URL", "").strip()
+    model = os.environ.get("SYLP_MEMORY_EXTRACT_MODEL", "").strip()
+    key = os.environ.get("SYLP_MEMORY_EXTRACT_KEY", "").strip() or None
     return (url.rstrip("/"), model, key) if url and model else None
 
 
@@ -77,10 +77,10 @@ def embed_texts(texts: list[str], *, config: tuple[str, str] | None = None) -> l
     """Embed texts with an OpenAI-compatible embeddings endpoint (e.g. Ollama)."""
     resolved = config or _embed_config()
     if not resolved:
-        raise RuntimeError("Set EVERUN_EMBED_URL and EVERUN_EMBED_MODEL to enable embeddings")
+        raise RuntimeError("Set SYLP_EMBED_URL and SYLP_EMBED_MODEL to enable embeddings")
     url, model = resolved
     data = _post_json(f"{url}/embeddings", {"model": model, "input": texts},
-                      os.environ.get("EVERUN_EMBED_KEY", "").strip() or None)
+                      os.environ.get("SYLP_EMBED_KEY", "").strip() or None)
     items = sorted(data.get("data") or [], key=lambda item: item.get("index", 0))
     vectors = [item.get("embedding") for item in items]
     if len(vectors) != len(texts) or any(not isinstance(v, list) for v in vectors):
@@ -268,7 +268,7 @@ def recall_block(store, repo: str | None, query: str, **kwargs: Any) -> str:
         return ""
     if not memories:
         return ""
-    lines = ["Memories from past Everrun sessions (model-extracted hints that may be "
+    lines = ["Memories from past Sylp sessions (model-extracted hints that may be "
              "stale or wrong; verify against the repository before relying on them):"]
     for memory in memories:
         content = memory["content"][:RECALL_MEMORY_CHARS]

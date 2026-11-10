@@ -5,7 +5,7 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from everrun_harness.plugins import PluginRegistry, discover
+from sylp_harness.plugins import PluginRegistry, discover
 
 HELLO_PLUGIN = textwrap.dedent("""
     def _hello(arguments, context):
@@ -28,10 +28,10 @@ class PluginTests(unittest.TestCase):
             home = Path(directory) / "home"
             repo = Path(directory) / "repo"
             (home / "plugins").mkdir(parents=True)
-            (repo / ".everrun" / "plugins").mkdir(parents=True)
+            (repo / ".sylp" / "plugins").mkdir(parents=True)
             (home / "plugins" / "a.py").write_text(HELLO_PLUGIN, encoding="utf-8")
-            (repo / ".everrun" / "plugins" / "b.py").write_text(HELLO_PLUGIN, encoding="utf-8")
-            (repo / ".everrun" / "plugins" / "_draft.py").write_text(HELLO_PLUGIN, encoding="utf-8")
+            (repo / ".sylp" / "plugins" / "b.py").write_text(HELLO_PLUGIN, encoding="utf-8")
+            (repo / ".sylp" / "plugins" / "_draft.py").write_text(HELLO_PLUGIN, encoding="utf-8")
             found = discover(home, repo)
             self.assertEqual([p.name for p in found], ["a.py", "b.py"])
 

@@ -7,7 +7,7 @@ import textwrap
 import unittest
 from pathlib import Path
 
-from everrun_harness import mcp
+from sylp_harness import mcp
 
 FAKE_SERVER = textwrap.dedent("""
     import json
@@ -70,12 +70,12 @@ class ConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / "home"
             repo = Path(directory) / "repo"
-            (repo / ".everrun").mkdir(parents=True)
-            (home / ".everrun").mkdir(parents=True)
+            (repo / ".sylp").mkdir(parents=True)
+            (home / ".sylp").mkdir(parents=True)
             home.mkdir(exist_ok=True)
             (home / "mcp.json").write_text(json.dumps({"servers": {
                 "a": {"command": "from-home"}, "b": {"command": "home-b"}}}), encoding="utf-8")
-            (repo / ".everrun" / "mcp.json").write_text(json.dumps({"servers": {
+            (repo / ".sylp" / "mcp.json").write_text(json.dumps({"servers": {
                 "b": {"command": "repo-b"}}}), encoding="utf-8")
             config = mcp.load_config(home, repo, {})
             self.assertEqual(config["a"]["command"], "from-home")

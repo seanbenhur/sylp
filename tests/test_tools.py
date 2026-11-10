@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from everrun_harness.tools import execute_tool
+from sylp_harness.tools import execute_tool
 
 
 class ToolTests(unittest.TestCase):

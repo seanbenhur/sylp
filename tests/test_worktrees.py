@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from everrun_harness.git import prepare_worktree, refresh_clean_worktree
+from sylp_harness.git import prepare_worktree, refresh_clean_worktree
 
 
 def git(root: Path, *args: str) -> str:
@@ -19,8 +19,8 @@ class WorktreeTests(unittest.TestCase):
     def make_repo(self, root: Path) -> None:
         root.mkdir()
         git(root, "init", "-b", "main")
-        git(root, "config", "user.name", "Everrun Test")
-        git(root, "config", "user.email", "everrun-test@example.invalid")
+        git(root, "config", "user.name", "Sylp Test")
+        git(root, "config", "user.email", "sylp-test@example.invalid")
         (root / "source.txt").write_text("committed\n", encoding="utf-8")
         git(root, "add", "source.txt")
         git(root, "commit", "-m", "baseline")

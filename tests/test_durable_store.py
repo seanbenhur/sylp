@@ -5,8 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from everrun_harness import runner
-from everrun_harness.store import Store
+from sylp_harness import runner
+from sylp_harness.store import Store
 
 
 class DurableStoreTests(unittest.TestCase):

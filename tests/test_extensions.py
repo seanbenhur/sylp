@@ -12,10 +12,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from everrun_harness import runner
-from everrun_harness.extensions import ExtensionSet
-from everrun_harness.git import prepare_worktree
-from everrun_harness.store import Store
+from sylp_harness import runner
+from sylp_harness.extensions import ExtensionSet
+from sylp_harness.git import prepare_worktree
+from sylp_harness.store import Store
 from tests.test_mcp import FAKE_SERVER
 
 PLUGIN = textwrap.dedent("""
@@ -37,7 +37,7 @@ class ExtensionSetTests(unittest.TestCase):
             server.write_text(FAKE_SERVER, encoding="utf-8")
             (home / "mcp.json").write_text(json.dumps({"servers": {
                 "fake": {"command": sys.executable, "args": [str(server)]}}}), encoding="utf-8")
-            with patch.dict(os.environ, {"EVERUN_HOME": str(home)}):
+            with patch.dict(os.environ, {"SYLP_HOME": str(home)}):
                 extensions = ExtensionSet.load(None)
             try:
                 names = [schema["name"] for schema in extensions.schemas()]
@@ -58,8 +58,8 @@ class RunnerExtensionTests(unittest.TestCase):
             root = Path(directory) / "repo"
             root.mkdir()
             subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Everrun Test"], cwd=root, check=True)
-            subprocess.run(["git", "config", "user.email", "everrun-test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Sylp Test"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "sylp-test@example.invalid"], cwd=root, check=True)
             (root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
             subprocess.run(["git", "add", "app.py"], cwd=root, check=True)
             subprocess.run(["git", "commit", "-m", "baseline"], cwd=root, check=True, capture_output=True)
@@ -72,7 +72,7 @@ class RunnerExtensionTests(unittest.TestCase):
             (state / "mcp.json").write_text(json.dumps({"servers": {
                 "fake": {"command": sys.executable, "args": [str(server)]}}}), encoding="utf-8")
 
-            with patch.dict(os.environ, {"EVERUN_HOME": str(state)}):
+            with patch.dict(os.environ, {"SYLP_HOME": str(state)}):
                 worktree, base = prepare_worktree(root, "extensions1")
                 store = Store()
                 task_id = store.create(goal="Probe the extension tools and report.",

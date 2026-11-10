@@ -11,7 +11,7 @@ import time
 import unittest
 from pathlib import Path
 
-from everrun_harness.store import Store
+from sylp_harness.store import Store
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,9 +22,9 @@ import os
 import sys
 import time
 from pathlib import Path
-from everrun_harness import providers
+from sylp_harness import providers
 
-trace_path = Path(os.environ["EVERUN_FAKE_PROVIDER_TRACE"])
+trace_path = Path(os.environ["SYLP_FAKE_PROVIDER_TRACE"])
 call_count = 0
 
 def complete(provider, model, messages, tools, system, *, stream_output=True):
@@ -57,9 +57,9 @@ providers.complete = complete
 
 class FullTUIProviderIntegrationTests(unittest.TestCase):
     def test_fullscreen_chat_streams_tools_and_resumes_after_process_restart(self):
-        executable = shutil.which("everrun", path=str(ROOT / ".venv" / "bin"))
+        executable = shutil.which("sylp", path=str(ROOT / ".venv" / "bin"))
         if not executable:
-            self.skipTest("editable Everrun console script is not installed in .venv")
+            self.skipTest("editable Sylp console script is not installed in .venv")
 
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
@@ -67,9 +67,9 @@ class FullTUIProviderIntegrationTests(unittest.TestCase):
             repo.mkdir()
             subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True,
                            capture_output=True, timeout=10)
-            subprocess.run(["git", "config", "user.name", "Everrun Integration"], cwd=repo,
+            subprocess.run(["git", "config", "user.name", "Sylp Integration"], cwd=repo,
                            check=True, capture_output=True, timeout=10)
-            subprocess.run(["git", "config", "user.email", "everrun@example.invalid"], cwd=repo,
+            subprocess.run(["git", "config", "user.email", "sylp@example.invalid"], cwd=repo,
                            check=True, capture_output=True, timeout=10)
             (repo / "hello.py").write_text("print('hello')\n", encoding="utf-8")
             subprocess.run(["git", "add", "hello.py"], cwd=repo, check=True,
@@ -80,15 +80,15 @@ class FullTUIProviderIntegrationTests(unittest.TestCase):
             helper = base / "provider-hook"
             helper.mkdir()
             (helper / "sitecustomize.py").write_text(_FAKE_PROVIDER_SITE, encoding="utf-8")
-            state = base / "everrun-state"
+            state = base / "sylp-state"
             trace_path = base / "provider-trace.jsonl"
             env = {
                 **os.environ,
-                "EVERUN_HOME": str(state),
-                "EVERUN_BASE_URL": "http://provider-disabled.invalid/v1",
-                "EVERUN_PROVIDER": "openai-compatible",
-                "EVERUN_MODEL": "local-test-model",
-                "EVERUN_FAKE_PROVIDER_TRACE": str(trace_path),
+                "SYLP_HOME": str(state),
+                "SYLP_BASE_URL": "http://provider-disabled.invalid/v1",
+                "SYLP_PROVIDER": "openai-compatible",
+                "SYLP_MODEL": "local-test-model",
+                "SYLP_FAKE_PROVIDER_TRACE": str(trace_path),
                 "PYTHONPATH": os.pathsep.join((str(helper), str(ROOT), os.environ.get("PYTHONPATH", ""))),
                 "TERM": "xterm-256color",
             }
@@ -134,7 +134,7 @@ class FullTUIProviderIntegrationTests(unittest.TestCase):
                 self.assertTrue(any(event["kind"] == "session_paused" for event in events))
 
                 # Simulate closing the first app process and opening the saved
-                # task in a fresh Everrun process. The first process may remain
+                # task in a fresh Sylp process. The first process may remain
                 # inside curses teardown on this synthetic PTY, so terminate it
                 # after the durable pause has been verified.
                 process.kill()

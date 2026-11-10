@@ -9,25 +9,25 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from everrun_harness import cli
+from sylp_harness import cli
 
 
 class InteractiveSetupTests(unittest.TestCase):
     def test_version_is_available_without_starting_a_session(self):
-        executable = Path(__file__).resolve().parents[1] / ".venv" / "bin" / "everrun"
+        executable = Path(__file__).resolve().parents[1] / ".venv" / "bin" / "sylp"
         if not executable.exists():
-            self.skipTest("editable Everrun console script is not installed in .venv")
+            self.skipTest("editable Sylp console script is not installed in .venv")
         result = subprocess.run([str(executable), "--version"], text=True,
                                 capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertRegex(result.stdout, r"^everrun \d+\.\d+\.\d+\n$")
+        self.assertRegex(result.stdout, r"^sylp \d+\.\d+\.\d+\n$")
 
     def test_interactive_shell_auto_approval_requires_explicit_environment_opt_in(self):
         with tempfile.TemporaryDirectory() as directory:
             repo = Path(directory)
             for value, expected in (("1", True), ("true", True), ("yes", True), ("0", False), ("", False)):
                 with self.subTest(value=value), \
-                        patch.dict(os.environ, {"EVERUN_AUTO_APPROVE": value}), \
+                        patch.dict(os.environ, {"SYLP_AUTO_APPROVE": value}), \
                         patch.object(cli, "_git_root", return_value=repo), \
                         patch.object(cli, "Store") as store_type, \
                         patch.object(cli, "is_connected", return_value=True), \
@@ -41,7 +41,7 @@ class InteractiveSetupTests(unittest.TestCase):
 
     def test_first_run_uses_the_only_connected_provider(self):
         with tempfile.TemporaryDirectory() as directory, \
-                patch.dict(os.environ, {"EVERUN_HOME": directory}, clear=True), \
+                patch.dict(os.environ, {"SYLP_HOME": directory}, clear=True), \
                 patch.object(cli, "_git_root", return_value=Path(directory)), \
                 patch.object(cli, "Store") as store_type, \
                 patch.object(cli, "is_connected", side_effect=lambda name: name == "anthropic"), \
@@ -62,7 +62,7 @@ class InteractiveSetupTests(unittest.TestCase):
     def test_first_run_prompts_when_multiple_providers_are_connected(self):
         connected = {"anthropic", "openrouter"}
         with tempfile.TemporaryDirectory() as directory, \
-                patch.dict(os.environ, {"EVERUN_HOME": directory}, clear=True), \
+                patch.dict(os.environ, {"SYLP_HOME": directory}, clear=True), \
                 patch.object(cli, "_git_root", return_value=Path(directory)), \
                 patch.object(cli, "Store") as store_type, \
                 patch.object(cli, "is_connected", side_effect=lambda name: name in connected), \

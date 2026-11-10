@@ -11,15 +11,15 @@ from typing import Any
 
 
 def default_db() -> Path:
-    configured_home = os.environ.get("EVERUN_HOME") or os.environ.get("RELAY_HOME")
+    configured_home = (os.environ.get("SYLP_HOME") or os.environ.get("EVERUN_HOME")
+                       or os.environ.get("RELAY_HOME"))
     if configured_home:
         return Path(configured_home) / "state.sqlite3"
-    # Keep using the earlier state location if one exists so a rename doesn't strand task history.
-    everrun_home = Path.home() / ".everrun"
-    legacy_home = Path.home() / ".relay"
-    if not (everrun_home / "state.sqlite3").exists() and (legacy_home / "state.sqlite3").exists():
-        return legacy_home / "state.sqlite3"
-    return everrun_home / "state.sqlite3"
+    # Keep using the earliest existing state location so a rename doesn't strand task history.
+    for home in (Path.home() / ".sylp", Path.home() / ".everrun", Path.home() / ".relay"):
+        if (home / "state.sqlite3").exists():
+            return home / "state.sqlite3"
+    return Path.home() / ".sylp" / "state.sqlite3"
 
 
 class Store:

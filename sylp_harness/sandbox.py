@@ -31,10 +31,10 @@ class SandboxPolicy:
 
 def policy_from_env(env: dict[str, str] | None = None) -> SandboxPolicy:
     env = os.environ if env is None else env
-    mode = (env.get("EVERUN_SANDBOX") or "auto").strip().lower()
+    mode = (env.get("SYLP_SANDBOX") or "auto").strip().lower()
     if mode not in {"off", "auto", "require"}:
-        raise ValueError("EVERUN_SANDBOX must be one of: off, auto, require")
-    network = (env.get("EVERUN_SANDBOX_NETWORK") or "on").strip().lower() not in {"0", "off", "false", "no"}
+        raise ValueError("SYLP_SANDBOX must be one of: off, auto, require")
+    network = (env.get("SYLP_SANDBOX_NETWORK") or "on").strip().lower() not in {"0", "off", "false", "no"}
     return SandboxPolicy(mode=mode, network=network)
 
 
@@ -89,7 +89,7 @@ def wrap_command(command: str, root: Path, policy: SandboxPolicy) -> tuple[str, 
         # The worktree stays writable, the Git common directory is writable so
         # status/commit work, and /tmp stays a shared writable scratch space;
         # everything else is read-only. No --new-session: the sandboxed
-        # command must stay in Everrun's process group so timeout and
+        # command must stay in Sylp's process group so timeout and
         # interrupt kills reach it.
         argv = ["bwrap", "--die-with-parent",
                 "--unshare-user", "--unshare-ipc", "--unshare-pid", "--unshare-uts"]
@@ -120,7 +120,7 @@ def wrap_command(command: str, root: Path, policy: SandboxPolicy) -> tuple[str, 
         return shlex.join(argv), None
     if policy.mode == "require":
         raise SandboxUnavailable(
-            "EVERUN_SANDBOX=require but no working sandbox backend was found. "
+            "SYLP_SANDBOX=require but no working sandbox backend was found. "
             "Install bubblewrap (Linux) or run on macOS with sandbox-exec."
         )
     reason = "no sandbox backend found" if argv is None else f"{backend} failed its probe"

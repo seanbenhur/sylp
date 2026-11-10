@@ -16,7 +16,7 @@ ENV_KEYS = {
     "gemini": "GEMINI_API_KEY",
     "antigravity": "ANTIGRAVITY_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
-    "openai-compatible": "EVERUN_API_KEY",
+    "openai-compatible": "SYLP_API_KEY",
 }
 DEFAULT_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
@@ -49,7 +49,14 @@ class EmptyModelResponse(RuntimeError):
 
 
 def config_home() -> Path:
-    return Path(os.environ.get("EVERUN_HOME", Path.home() / ".everrun"))
+    configured = os.environ.get("SYLP_HOME") or os.environ.get("EVERUN_HOME")
+    if configured:
+        return Path(configured)
+    # Keep using an existing credentials directory from before the rename.
+    for home in (Path.home() / ".sylp", Path.home() / ".everrun"):
+        if (home / "auth.json").exists():
+            return home
+    return Path.home() / ".sylp"
 
 
 def _auth_path() -> Path:
@@ -98,7 +105,7 @@ def is_connected(provider: str) -> bool:
     if not key and provider == "antigravity":
         key = load_auth().get("gemini", {}).get("api_key")
     if provider == "openai-compatible":
-        return bool(entry.get("base_url") or os.environ.get("EVERUN_BASE_URL"))
+        return bool(entry.get("base_url") or os.environ.get("SYLP_BASE_URL"))
     if provider == "openai" and entry.get("auth_type") == "oauth":
         return bool(entry.get("refresh_token") and "chatgpt.tokens.use.direct" in entry.get("scopes", []))
     if provider == "antigravity":
@@ -191,27 +198,27 @@ def _credential(provider: str) -> str:
         key = load_auth().get("gemini", {}).get("api_key")
     if not key:
         if provider == "openai-compatible":
-            if os.environ.get("EVERUN_BASE_URL") or entry.get("base_url"):
+            if os.environ.get("SYLP_BASE_URL") or entry.get("base_url"):
                 return ""
-            raise RuntimeError(f"Configure a base URL with `everrun auth set {provider}`")
+            raise RuntimeError(f"Configure a base URL with `sylp auth set {provider}`")
         if provider == "antigravity":
-            raise RuntimeError("Connect Antigravity with `everrun auth login antigravity` or set GEMINI_API_KEY")
-        raise RuntimeError(f"Connect {provider} with `everrun auth set {provider}` or set {env_key}")
+            raise RuntimeError("Connect Antigravity with `sylp auth login antigravity` or set GEMINI_API_KEY")
+        raise RuntimeError(f"Connect {provider} with `sylp auth set {provider}` or set {env_key}")
     return str(key)
 
 
 def _base_url(provider: str) -> str:
     if provider == "openai-compatible":
-        value = os.environ.get("EVERUN_BASE_URL") or load_auth().get(provider, {}).get("base_url")
+        value = os.environ.get("SYLP_BASE_URL") or load_auth().get(provider, {}).get("base_url")
         if not value:
-            raise RuntimeError("Set EVERUN_BASE_URL or configure a base URL with `everrun auth set openai-compatible`")
+            raise RuntimeError("Set SYLP_BASE_URL or configure a base URL with `sylp auth set openai-compatible`")
         return str(value).rstrip("/")
     return DEFAULT_BASE_URLS[provider]
 
 
 def _request_timeout() -> int:
     try:
-        value = int(os.environ.get("EVERUN_REQUEST_TIMEOUT", "900"))
+        value = int(os.environ.get("SYLP_REQUEST_TIMEOUT", "900"))
     except ValueError:
         value = 900
     return max(60, min(3600, value))
@@ -274,8 +281,8 @@ def list_models(provider: str) -> list[dict[str, str]]:
     if provider == "anthropic":
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
     if provider == "openrouter":
-        headers["HTTP-Referer"] = "https://github.com/seanbenhur/everrun"
-        headers["X-Title"] = "Everrun"
+        headers["HTTP-Referer"] = "https://github.com/seanbenhur/sylp"
+        headers["X-Title"] = "Sylp"
     response = _request(f"{base}/models", headers=headers)
     raw = response.get("data", response.get("models", []))
     chatgpt_plan = provider == "openai" and load_auth().get("openai", {}).get("auth_type") == "oauth" and not os.environ.get("OPENAI_API_KEY")
@@ -365,7 +372,7 @@ def _antigravity_backend(token: str) -> tuple[str, str | None]:
 
 
 def _gemini_contents(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Convert Everrun's OpenAI-style history into Gemini contents."""
+    """Convert Sylp's OpenAI-style history into Gemini contents."""
     call_names: dict[str, str] = {}
     for message in messages:
         for call in message.get("tool_calls") or []:
@@ -427,7 +434,7 @@ def _antigravity_oauth_complete(model: str, messages: list[dict[str, Any]], tool
                                 system: str, *, stream_output: bool = True) -> dict[str, Any]:
     token = _antigravity_oauth_token()
     if not token:
-        raise RuntimeError("Connect Antigravity with `everrun auth login antigravity` or set GEMINI_API_KEY")
+        raise RuntimeError("Connect Antigravity with `sylp auth login antigravity` or set GEMINI_API_KEY")
     base, project = _antigravity_backend(token)
     request_body: dict[str, Any] = {"contents": _gemini_contents(messages)}
     if system:
@@ -516,7 +523,7 @@ def _openai_responses_complete(model: str, history: list[dict[str, Any]], tools:
                   "parameters": tool["parameters"], "strict": False} for tool in tools]
     # Responses API function definitions belong in the top-level `tools`
     # argument. Putting them in `input` as a made-up `additional_tools` item
-    # can produce responses that finish without invoking Everrun's tools.
+    # can produce responses that finish without invoking Sylp's tools.
     body = {"model": model, "instructions": system, "input": list(history),
             "store": False, "stream": True}
     if api_tools:
@@ -700,8 +707,8 @@ def complete(provider: str, model: str, messages: list[dict[str, Any]], tools: l
     if provider in ("gemini", "antigravity") and not key.startswith("ya29."):
         headers["x-goog-api-key"] = key
     if provider == "openrouter":
-        headers["HTTP-Referer"] = "https://github.com/seanbenhur/everrun"
-        headers["X-Title"] = "Everrun"
+        headers["HTTP-Referer"] = "https://github.com/seanbenhur/sylp"
+        headers["X-Title"] = "Sylp"
     request_body = {"model": model, "messages": [{"role": "system", "content": system}, *messages],
                     "stream": True}
     if tools:

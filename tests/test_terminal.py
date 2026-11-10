@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from everrun_harness.terminal import (
+from sylp_harness.terminal import (
     _MAX_TRANSCRIPT_LINES,
     _SPINNER_FRAMES,
     TerminalUI,
@@ -49,7 +49,7 @@ def rendered_text(screen: FakeScreen) -> str:
 
 class TerminalTests(unittest.TestCase):
     def test_status_updates_are_kept_for_header_rendering(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         with patch.object(ui, "_draw") as draw:
             ui.set_status("Thinking · turn 2")
 
@@ -57,14 +57,14 @@ class TerminalTests(unittest.TestCase):
         draw.assert_called_once_with()
 
     def test_run_routes_print_and_input_to_full_screen_ui(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         received = []
 
         def callback():
             print("Session output")
             received.append(input("You> "))
 
-        with patch("everrun_harness.terminal.curses.wrapper", side_effect=lambda _run, fn: fn()), \
+        with patch("sylp_harness.terminal.curses.wrapper", side_effect=lambda _run, fn: fn()), \
                 patch.object(ui, "input", return_value="hello") as ui_input:
             ui.run(callback)
 
@@ -77,7 +77,7 @@ class TerminalTests(unittest.TestCase):
             def get_wch(self):
                 return "\x03"
 
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = KeyScreen()
         with patch.object(ui, "_draw"), patch.object(ui, "_record_input") as record_input:
             value = ui.input("Approval> ")
@@ -86,14 +86,14 @@ class TerminalTests(unittest.TestCase):
         record_input.assert_called_once_with("/exit")
 
     def test_streamed_output_is_wrapped_and_scrollback_is_bounded(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.write("x" * 250_000)
 
         self.assertLessEqual(len(ui.lines), _MAX_TRANSCRIPT_LINES)
         self.assertLessEqual(max(map(len, ui.lines)), 118)
 
     def test_streaming_output_preserves_scrollback_position(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.lines = [f"line {index}" for index in range(50)]
         ui.scroll = 10
 
@@ -102,7 +102,7 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual(ui.scroll, 11)
 
     def test_task_rail_marks_current_session_and_counts_attention(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [
             {"id": "aaa", "goal": "Current task", "status": "running"},
             {"id": "bbb", "goal": "Waiting task", "status": "waiting_for_input"},
@@ -118,7 +118,7 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual(ui._attention_count(), 1)
 
     def test_panels_stay_off_without_session_binding(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
 
         self.assertEqual(ui._rail_entries(), [])
         self.assertEqual(ui._attention_count(), 0)
@@ -127,7 +127,7 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual(ui._transcript_width(), 118)
 
     def test_panels_are_hidden_by_default_and_open_on_toggle(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [], diff_summary=lambda: "")
 
         self.assertFalse(ui.show_rail)
@@ -142,7 +142,7 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual(ui._changes_width(120), 38)
 
     def test_changes_pane_wraps_diff_summary_to_panel_width(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [],
                         diff_summary=lambda: " app.py | 5 +++--\n " + "x" * 100)
 
@@ -161,7 +161,7 @@ class TerminalTests(unittest.TestCase):
             def get_wch(self):
                 return next(keys)
 
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = KeyScreen()
         ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [], diff_summary=lambda: "")
         with patch.object(ui, "_draw"), patch.object(ui, "_record_input"):
@@ -172,7 +172,7 @@ class TerminalTests(unittest.TestCase):
         self.assertTrue(ui.show_changes)
 
     def test_draw_renders_rail_changes_and_attention_header(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
         ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [
@@ -181,7 +181,7 @@ class TerminalTests(unittest.TestCase):
         ], diff_summary=lambda: " app.py | 5 +++--")
         ui.show_rail = True
         ui.show_changes = True
-        ui.lines = ["Everrun> hello"]
+        ui.lines = ["Sylp> hello"]
 
         ui._draw()
 
@@ -196,16 +196,16 @@ class TerminalTests(unittest.TestCase):
 
 
     def test_tool_output_hidden_by_default_with_placeholder(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
-        ui.lines = ["Everrun> on it"]
+        ui.lines = ["Sylp> on it"]
         ui._tool_lines = [False]
         ui.write("\n[tool run_command running]\n")
         ui.write("building project\n")
         ui.write("done in 2s\n")
         ui.write("\n[tool run_command complete] done in 2s\n")
-        ui.write("Everrun> build passed\n")
+        ui.write("Sylp> build passed\n")
 
         ui._draw()
 
@@ -217,7 +217,7 @@ class TerminalTests(unittest.TestCase):
         self.assertIn("tool lines hidden · F4 to show", rendered)
 
     def test_f4_toggle_reveals_tool_output(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
         ui.write("\n[tool read_file]\nfile contents here\n")
@@ -241,7 +241,7 @@ class TerminalTests(unittest.TestCase):
             def get_wch(self):
                 return next(keys)
 
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = KeyScreen()
         self.assertFalse(ui.show_tool_calls)
         with patch.object(ui, "_draw"), patch.object(ui, "_record_input"):
@@ -251,13 +251,13 @@ class TerminalTests(unittest.TestCase):
         self.assertTrue(ui.show_tool_calls)
 
     def test_regular_lines_still_render_around_hidden_tool_output(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
-        ui.lines = ["Everrun> first"]
+        ui.lines = ["Sylp> first"]
         ui._tool_lines = [False]
         ui.write("\n[tool run_command]\noutput\n")
-        ui.write("Everrun> second\n")
+        ui.write("Sylp> second\n")
 
         ui._draw()
 
@@ -270,23 +270,23 @@ class TerminalTests(unittest.TestCase):
         ui = TerminalUI("repo · provider/model")
         ui.screen = FakeScreen()
         ui._colors = False
-        ui.lines = ["Type /help for commands.", "You> fix the parser", "Everrun> done"]
+        ui.lines = ["Type /help for commands.", "You> fix the parser", "Sylp> done"]
         ui._tool_lines = [False, False, False]
 
         ui._draw()
 
         rendered = rendered_text(ui.screen)
         self.assertIn("Type /help for commands.", rendered)
-        self.assertNotIn("Everrun", rendered)
+        self.assertNotIn("Sylp", rendered)
         self.assertNotIn("You>", rendered)
         self.assertIn("❯", rendered)
         self.assertIn("•", rendered)
 
     def test_chat_prefixes_render_as_markers(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
-        ui.lines = ["You> fix the parser", "Everrun> sure, looking now"]
+        ui.lines = ["You> fix the parser", "Sylp> sure, looking now"]
         ui._tool_lines = [False, False]
 
         ui._draw()
@@ -297,13 +297,13 @@ class TerminalTests(unittest.TestCase):
         self.assertIn("fix the parser", rendered)
         self.assertIn("sure, looking now", rendered)
         self.assertNotIn("You> fix", rendered)
-        self.assertNotIn("Everrun> sure", rendered)
+        self.assertNotIn("Sylp> sure", rendered)
 
     def test_markdown_bold_code_and_headings_get_styles(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
-        ui.lines = ["Everrun> use **pytest** and `uv run` next", "## Summary"]
+        ui.lines = ["Sylp> use **pytest** and `uv run` next", "## Summary"]
         ui._tool_lines = [False, False]
 
         ui._draw()
@@ -317,10 +317,10 @@ class TerminalTests(unittest.TestCase):
         self.assertIn("Summary", bold_calls)
 
     def test_code_fences_render_dim_and_toggle(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
-        ui.lines = ["Everrun> here:", "```python", "print(1)", "```", "done"]
+        ui.lines = ["Sylp> here:", "```python", "print(1)", "```", "done"]
         ui._tool_lines = [False] * 5
 
         ui._draw()
@@ -331,7 +331,7 @@ class TerminalTests(unittest.TestCase):
         self.assertTrue(by_text["```python"] & curses.A_DIM)
 
     def test_busy_status_shows_spinner_and_elapsed_timer(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.status = "Thinking · turn 1"
         ui._status_started = 100.0
 
@@ -343,7 +343,7 @@ class TerminalTests(unittest.TestCase):
         self.assertIn("1m 05s", text)
 
     def test_idle_status_shows_static_dot_without_timer(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.status = "Waiting for your message"
         ui._status_started = 100.0
 
@@ -370,7 +370,7 @@ class TerminalTests(unittest.TestCase):
         self.assertEqual(["".join(ch for ch, _ in row) for row in rows], ["abcd", "efgh", "ij"])
 
     def test_composer_shows_marker_hints_and_status_row(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
         ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [], diff_summary=lambda: "")
@@ -386,7 +386,7 @@ class TerminalTests(unittest.TestCase):
         self.assertTrue(any("/repo" in text for text in footer))
 
     def test_default_prompt_shows_only_the_marker(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
         ui.prompt = "You>"  # rstripped by input()
@@ -400,7 +400,7 @@ class TerminalTests(unittest.TestCase):
         self.assertIn("You> hello", ui.lines)
 
     def test_approval_prompt_and_lines_are_highlighted(self):
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = FakeScreen()
         ui._colors = False
         ui.lines = ["Allow command in task worktree?", "  ls -la"]
@@ -421,7 +421,7 @@ class TerminalTests(unittest.TestCase):
             def get_wch(self):
                 return "\x03"
 
-        ui = TerminalUI("Everrun")
+        ui = TerminalUI("Sylp")
         ui.screen = KeyScreen()
         with patch.object(ui, "_draw"):
             ui.input("Allow command in task worktree?\n  ls -la\n[y/N] ")

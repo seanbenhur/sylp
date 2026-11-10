@@ -71,11 +71,11 @@ class BenchmarkPreparationTests(unittest.TestCase):
 
     def test_scorecard_keeps_per_task_failures_and_omits_unmeasured_metrics(self):
         records = [
-            {"task": "cache", "arm": "everrun", "run_number": 1, "acceptance_pass": True,
+            {"task": "cache", "arm": "sylp", "run_number": 1, "acceptance_pass": True,
              "regression_pass": None, "recovery_pass": False, "wall_seconds": 12.0,
              "human_interventions": 2, "input_tokens": 100, "output_tokens": 20,
              "billed_cost_usd": None, "billing_path": "subscription"},
-            {"task": "cache", "arm": "everrun", "run_number": 2, "acceptance_pass": False,
+            {"task": "cache", "arm": "sylp", "run_number": 2, "acceptance_pass": False,
              "regression_pass": None, "recovery_pass": True, "wall_seconds": 14.0,
              "human_interventions": 0, "input_tokens": None, "output_tokens": None,
              "billed_cost_usd": None, "billing_path": "subscription"},
@@ -87,20 +87,20 @@ class BenchmarkPreparationTests(unittest.TestCase):
         summary = summarize(records)
         markdown = render_markdown(summary)
 
-        everrun = next(item for item in summary["task_results"] if item["arm"] == "everrun")
-        self.assertEqual(everrun["metrics"]["acceptance_pass"], {"passed": 1, "measured": 2})
-        self.assertEqual(everrun["metrics"]["regression_pass"], {"passed": 0, "measured": 0})
-        self.assertIn("cache / everrun run 1: recovery_pass", markdown)
+        sylp = next(item for item in summary["task_results"] if item["arm"] == "sylp")
+        self.assertEqual(sylp["metrics"]["acceptance_pass"], {"passed": 1, "measured": 2})
+        self.assertEqual(sylp["metrics"]["regression_pass"], {"passed": 0, "measured": 0})
+        self.assertIn("cache / sylp run 1: recovery_pass", markdown)
         self.assertIn("Acceptance | Regression | Recovery", markdown)
         self.assertIn("1/2 | n/a | 1/2", markdown)
-        self.assertEqual(everrun["usage"]["input_tokens"], {"total": 100, "reported_runs": 1, "runs": 2})
+        self.assertEqual(sylp["usage"]["input_tokens"], {"total": 100, "reported_runs": 1, "runs": 2})
         self.assertIn("100 (1/2 runs)", markdown)
         self.assertIn("0 (0/2 runs)", markdown)
 
     def test_scorecard_rejects_duplicate_and_incomplete_records(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "records.jsonl"
-            record = {"task": "cache", "arm": "everrun", "run_number": 1, "acceptance_pass": True,
+            record = {"task": "cache", "arm": "sylp", "run_number": 1, "acceptance_pass": True,
                       "wall_seconds": 1, "human_interventions": 0}
             path.write_text(json.dumps(record) + "\n" + json.dumps(record) + "\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "duplicate run record"):
@@ -115,7 +115,7 @@ class BenchmarkPreparationTests(unittest.TestCase):
             records = root / "runs.jsonl"
             output = root / "summary.json"
             records.write_text(json.dumps({
-                "task": "smoke", "arm": "everrun", "run_number": 1,
+                "task": "smoke", "arm": "sylp", "run_number": 1,
                 "acceptance_pass": True, "wall_seconds": 1.5, "human_interventions": 0,
                 "input_tokens": 10, "output_tokens": 5, "billed_cost_usd": 0.01,
                 "billing_path": "api",

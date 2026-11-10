@@ -28,14 +28,14 @@ def load_config(home: Path | None = None, repo: Path | None = None,
     """Merge mcp.json files; later sources win on a server-name conflict."""
     env = os.environ if env is None else env
     candidates: list[Path] = []
-    override = env.get("EVERUN_MCP_CONFIG")
+    override = env.get("SYLP_MCP_CONFIG")
     if override:
         candidates.append(Path(override))
     else:
         if home is not None:
             candidates.append(Path(home) / "mcp.json")
         if repo is not None:
-            candidates.append(Path(repo) / ".everrun" / "mcp.json")
+            candidates.append(Path(repo) / ".sylp" / "mcp.json")
     servers: dict[str, dict[str, Any]] = {}
     for path in candidates:
         if not path.exists():
@@ -85,7 +85,7 @@ class MCPServer:
         self._request("initialize", {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {},
-            "clientInfo": {"name": "everrun", "version": "0.1.0"},
+            "clientInfo": {"name": "sylp", "version": "0.1.0"},
         }, timeout=INIT_TIMEOUT_SECONDS)
         self._notify("notifications/initialized", {})
 

@@ -15,9 +15,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from everrun_harness import runner
-from everrun_harness.git import prepare_worktree
-from everrun_harness.store import Store
+from sylp_harness import runner
+from sylp_harness.git import prepare_worktree
+from sylp_harness.store import Store
 
 
 class RunnerIntegrationTests(unittest.TestCase):
@@ -31,7 +31,7 @@ class RunnerIntegrationTests(unittest.TestCase):
                 import sys
                 import time
                 from pathlib import Path
-                from everrun_harness.runner import _task_lock
+                from sylp_harness.runner import _task_lock
 
                 ready, release = map(Path, sys.argv[1:])
                 with _task_lock("lock-test"):
@@ -42,7 +42,7 @@ class RunnerIntegrationTests(unittest.TestCase):
                     if not release.exists():
                         raise SystemExit("test parent did not release the worker")
             """)
-            with patch.dict(os.environ, {"EVERUN_HOME": str(state)}):
+            with patch.dict(os.environ, {"SYLP_HOME": str(state)}):
                 worker = subprocess.Popen([sys.executable, "-c", script, str(ready), str(release)],
                                           cwd=Path(__file__).resolve().parents[1],
                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -51,7 +51,7 @@ class RunnerIntegrationTests(unittest.TestCase):
                     while not ready.exists() and worker.poll() is None and time.monotonic() < deadline:
                         time.sleep(0.02)
                     self.assertTrue(ready.exists(), worker.stderr.read() if worker.poll() is not None else "")
-                    with self.assertRaisesRegex(RuntimeError, "already open in another Everrun process"), \
+                    with self.assertRaisesRegex(RuntimeError, "already open in another Sylp process"), \
                             runner._task_lock("lock-test"):
                         pass
                     release.write_text("release", encoding="utf-8")
@@ -70,14 +70,14 @@ class RunnerIntegrationTests(unittest.TestCase):
             root = Path(directory) / "repo"
             root.mkdir()
             subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Everrun Test"], cwd=root, check=True)
-            subprocess.run(["git", "config", "user.email", "everrun-test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Sylp Test"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "sylp-test@example.invalid"], cwd=root, check=True)
             (root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
             subprocess.run(["git", "add", "app.py"], cwd=root, check=True)
             subprocess.run(["git", "commit", "-m", "baseline"], cwd=root, check=True, capture_output=True)
 
             state = Path(directory) / "state"
-            with patch.dict(os.environ, {"EVERUN_HOME": str(state)}):
+            with patch.dict(os.environ, {"SYLP_HOME": str(state)}):
                 worktree, base = prepare_worktree(root, "integration1")
                 store = Store()
                 task_id = store.create(goal="List the source files and report.", acceptance=[],
@@ -123,8 +123,8 @@ class RunnerIntegrationTests(unittest.TestCase):
             root = Path(directory) / "repo"
             root.mkdir()
             subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Everrun Test"], cwd=root, check=True)
-            subprocess.run(["git", "config", "user.email", "everrun-test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Sylp Test"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "sylp-test@example.invalid"], cwd=root, check=True)
             (root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
             subprocess.run(["git", "add", "app.py"], cwd=root, check=True)
             subprocess.run(["git", "commit", "-m", "baseline"], cwd=root, check=True, capture_output=True)
@@ -144,7 +144,7 @@ class RunnerIntegrationTests(unittest.TestCase):
 
             child_script = textwrap.dedent("""
                 import sys
-                from everrun_harness import runner
+                from sylp_harness import runner
 
                 def complete(provider, model, history, tools, system):
                     recovered = [item for item in history if item.get("type") == "function_call_output"]
@@ -161,7 +161,7 @@ class RunnerIntegrationTests(unittest.TestCase):
                 runner.complete = complete
                 runner.run_task(sys.argv[1])
             """)
-            env = {**os.environ, "EVERUN_HOME": str(state)}
+            env = {**os.environ, "SYLP_HOME": str(state)}
             child = subprocess.run([sys.executable, "-c", child_script, task_id], cwd=root,
                                    env=env, text=True, capture_output=True, timeout=30)
             self.assertEqual(child.returncode, 0, child.stderr or child.stdout)
@@ -179,8 +179,8 @@ class RunnerIntegrationTests(unittest.TestCase):
             root = Path(directory) / "repo"
             root.mkdir()
             subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Everrun Test"], cwd=root, check=True)
-            subprocess.run(["git", "config", "user.email", "everrun-test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Sylp Test"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "sylp-test@example.invalid"], cwd=root, check=True)
             (root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
             subprocess.run(["git", "add", "app.py"], cwd=root, check=True)
             subprocess.run(["git", "commit", "-m", "baseline"], cwd=root, check=True, capture_output=True)
@@ -200,7 +200,7 @@ class RunnerIntegrationTests(unittest.TestCase):
                        f"echo $$ > {shlex.quote(str(tool_pid))}; "
                        "while :; do sleep 1; done")
             start_script = textwrap.dedent(f"""
-                from everrun_harness import runner
+                from sylp_harness import runner
 
                 def complete(provider, model, history, tools, system):
                     return {{
@@ -213,7 +213,7 @@ class RunnerIntegrationTests(unittest.TestCase):
                 runner.complete = complete
                 runner.run_task({task_id!r})
             """)
-            env = {**os.environ, "EVERUN_HOME": str(state)}
+            env = {**os.environ, "SYLP_HOME": str(state)}
             worker = subprocess.Popen([sys.executable, "-c", start_script], cwd=root, env=env,
                                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             shell_group = None
@@ -222,7 +222,7 @@ class RunnerIntegrationTests(unittest.TestCase):
                 while time.monotonic() < deadline:
                     if worker.poll() is not None:
                         stderr = worker.stderr.read() if worker.stderr else ""
-                        self.fail(f"Everrun exited before the test interrupted it: {stderr}")
+                        self.fail(f"Sylp exited before the test interrupted it: {stderr}")
                     if side_effect.exists() and tool_pid.exists():
                         try:
                             shell_group = int(tool_pid.read_text(encoding="utf-8").strip())
@@ -241,7 +241,7 @@ class RunnerIntegrationTests(unittest.TestCase):
                     rows = db.execute("SELECT kind,payload FROM events WHERE task_id=? ORDER BY seq", (task_id,)).fetchall()
                     task_status = db.execute("SELECT status FROM tasks WHERE id=?", (task_id,)).fetchone()
                     db.close()
-                    self.fail(f"Everrun did not reach a durable in-progress shell tool; "
+                    self.fail(f"Sylp did not reach a durable in-progress shell tool; "
                               f"worker={worker.poll()}, side_effect={side_effect.exists()}, "
                               f"tool_pid={tool_pid.exists()}, status={task_status}, events={rows!r}")
 
@@ -254,7 +254,7 @@ class RunnerIntegrationTests(unittest.TestCase):
 
                 resume_script = textwrap.dedent("""
                     import sys
-                    from everrun_harness import runner
+                    from sylp_harness import runner
 
                     def complete(provider, model, history, tools, system):
                         recovered = [item for item in history if item.get("type") == "function_call_output"]
@@ -291,8 +291,8 @@ class SessionSwitchTests(unittest.TestCase):
         root = Path(directory) / "repo"
         root.mkdir()
         subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "Everrun Test"], cwd=root, check=True)
-        subprocess.run(["git", "config", "user.email", "everrun-test@example.invalid"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.name", "Sylp Test"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.email", "sylp-test@example.invalid"], cwd=root, check=True)
         (root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
         subprocess.run(["git", "add", "app.py"], cwd=root, check=True)
         subprocess.run(["git", "commit", "-m", "baseline"], cwd=root, check=True, capture_output=True)
@@ -309,7 +309,7 @@ class SessionSwitchTests(unittest.TestCase):
     def test_switch_command_pauses_current_session_and_returns_target(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state"
-            with patch.dict(os.environ, {"EVERUN_HOME": str(state)}):
+            with patch.dict(os.environ, {"SYLP_HOME": str(state)}):
                 root, store, task_id, target_id = self._repo_with_two_sessions(directory)
                 responses = iter([{"text": "Done so far.", "tool_calls": [],
                                    "history_items": [{"type": "message", "role": "assistant",
@@ -331,7 +331,7 @@ class SessionSwitchTests(unittest.TestCase):
     def test_switch_lists_sessions_and_rejects_bad_targets(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state"
-            with patch.dict(os.environ, {"EVERUN_HOME": str(state)}):
+            with patch.dict(os.environ, {"SYLP_HOME": str(state)}):
                 root, store, task_id, target_id = self._repo_with_two_sessions(directory)
                 task = store.get(task_id)
                 with patch("builtins.input",
@@ -350,7 +350,7 @@ class SessionSwitchTests(unittest.TestCase):
     def test_switch_rejects_sessions_that_are_not_paused(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory) / "state"
-            with patch.dict(os.environ, {"EVERUN_HOME": str(state)}):
+            with patch.dict(os.environ, {"SYLP_HOME": str(state)}):
                 root, store, task_id, target_id = self._repo_with_two_sessions(directory)
                 store.update(target_id, status="running")
                 task = store.get(task_id)

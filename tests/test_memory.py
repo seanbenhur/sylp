@@ -10,12 +10,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from everrun_harness import memory, runner
-from everrun_harness.git import prepare_worktree
-from everrun_harness.store import Store
+from sylp_harness import memory, runner
+from sylp_harness.git import prepare_worktree
+from sylp_harness.store import Store
 
-MEMORY_ENV = ["EVERUN_MEMORY", "EVERUN_EMBED_URL", "EVERUN_EMBED_MODEL", "EVERUN_EMBED_KEY",
-              "EVERUN_MEMORY_EXTRACT_URL", "EVERUN_MEMORY_EXTRACT_MODEL", "EVERUN_MEMORY_EXTRACT_KEY"]
+MEMORY_ENV = ["SYLP_MEMORY", "SYLP_EMBED_URL", "SYLP_EMBED_MODEL", "SYLP_EMBED_KEY",
+              "SYLP_MEMORY_EXTRACT_URL", "SYLP_MEMORY_EXTRACT_MODEL", "SYLP_MEMORY_EXTRACT_KEY"]
 
 
 def clean_env(**overrides):
@@ -139,8 +139,8 @@ class ExtractionTests(unittest.TestCase):
 
     def test_failing_local_extractor_falls_back_to_provider(self):
         reply = json.dumps([{"kind": "fact", "scope": "repo", "content": "Fallback works."}])
-        env = clean_env(EVERUN_MEMORY_EXTRACT_URL="http://localhost:9/v1",
-                        EVERUN_MEMORY_EXTRACT_MODEL="tiny")
+        env = clean_env(SYLP_MEMORY_EXTRACT_URL="http://localhost:9/v1",
+                        SYLP_MEMORY_EXTRACT_MODEL="tiny")
         with env, patch.object(memory, "_post_json", side_effect=OSError("connection refused")):
             saved = memory.extract_memories(
                 self.store, self.task, "openai", "text", source="compaction",
@@ -161,7 +161,7 @@ class ExtractionTests(unittest.TestCase):
                             for e in self.store.events("task1")))
 
     def test_disabled_memory_skips_extraction(self):
-        with clean_env(EVERUN_MEMORY="0"):
+        with clean_env(SYLP_MEMORY="0"):
             saved = memory.extract_memories(
                 self.store, self.task, "openai", "text", source="compaction",
                 complete_fn=lambda *a, **k: self.fail("extractor ran while disabled"))
@@ -169,7 +169,7 @@ class ExtractionTests(unittest.TestCase):
 
     def test_extraction_stores_embeddings_when_configured(self):
         reply = json.dumps([{"kind": "fact", "scope": "repo", "content": "Embeddings attach."}])
-        env = clean_env(EVERUN_EMBED_URL="http://localhost:9", EVERUN_EMBED_MODEL="embed-model")
+        env = clean_env(SYLP_EMBED_URL="http://localhost:9", SYLP_EMBED_MODEL="embed-model")
         with env:
             memory.extract_memories(self.store, self.task, "openai", "text", source="compaction",
                                     complete_fn=lambda *a, **k: {"text": reply},
@@ -195,7 +195,7 @@ class RecallTests(unittest.TestCase):
             hits = memory.recall(self.store, "/repo/a", "how do I run the unittest suite?")
             block = memory.recall_block(self.store, "/repo/a", "how do I run the unittest suite?")
         self.assertEqual(hits[0]["kind"], "convention")
-        self.assertIn("Memories from past Everrun sessions", block)
+        self.assertIn("Memories from past Sylp sessions", block)
         self.assertIn("verify against the repository", block)
         self.assertIn("[convention] Tests run with unittest", block)
 
@@ -203,7 +203,7 @@ class RecallTests(unittest.TestCase):
         self.store.add_memory("/repo/a", "fact", "Something stored.")
         with clean_env():
             self.assertEqual(memory.recall_block(self.store, "/repo/a", "zzzzqqqq"), "")
-        with clean_env(EVERUN_MEMORY="0"):
+        with clean_env(SYLP_MEMORY="0"):
             self.assertEqual(memory.recall_block(self.store, "/repo/a", "Something"), "")
 
     def test_hybrid_recall_surfaces_vector_only_matches(self):
@@ -218,7 +218,7 @@ class RecallTests(unittest.TestCase):
         def embed_fn(texts):
             return [embeddings[text] for text in texts]
 
-        env = clean_env(EVERUN_EMBED_URL="http://localhost:9", EVERUN_EMBED_MODEL="embed-model")
+        env = clean_env(SYLP_EMBED_URL="http://localhost:9", SYLP_EMBED_MODEL="embed-model")
         with env:
             fts_hits = memory.recall(self.store, "/repo/a", "run the unittest suite")
             hybrid_hits = memory.recall(self.store, "/repo/a",
@@ -234,7 +234,7 @@ class RecallTests(unittest.TestCase):
         def broken_embed(texts):
             raise OSError("embedding server down")
 
-        env = clean_env(EVERUN_EMBED_URL="http://localhost:9", EVERUN_EMBED_MODEL="embed-model")
+        env = clean_env(SYLP_EMBED_URL="http://localhost:9", SYLP_EMBED_MODEL="embed-model")
         with env:
             hits = memory.recall(self.store, "/repo/a", "unittest", embed_fn=broken_embed)
         self.assertEqual(len(hits), 1)
@@ -262,24 +262,24 @@ class RunnerIntegrationTests(unittest.TestCase):
 
     def test_system_prompt_carries_memory_block(self):
         task = {"goal": "g", "acceptance": []}
-        prompt = runner._system_prompt(task, memory_block="Memories from past Everrun sessions:\n- [fact] x")
-        self.assertIn("Memories from past Everrun sessions", prompt)
+        prompt = runner._system_prompt(task, memory_block="Memories from past Sylp sessions:\n- [fact] x")
+        self.assertIn("Memories from past Sylp sessions", prompt)
         self.assertLess(prompt.index("- [fact] x"), prompt.index("Task goal:"))
-        self.assertNotIn("Memories from past Everrun sessions", runner._system_prompt(task))
+        self.assertNotIn("Memories from past Sylp sessions", runner._system_prompt(task))
 
     def test_recalled_memories_reach_the_model_prompt_and_completion_extracts(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "repo"
             root.mkdir()
             subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", "Everrun Test"], cwd=root, check=True)
-            subprocess.run(["git", "config", "user.email", "everrun-test@example.invalid"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.name", "Sylp Test"], cwd=root, check=True)
+            subprocess.run(["git", "config", "user.email", "sylp-test@example.invalid"], cwd=root, check=True)
             (root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
             subprocess.run(["git", "add", "app.py"], cwd=root, check=True)
             subprocess.run(["git", "commit", "-m", "baseline"], cwd=root, check=True, capture_output=True)
 
             state = Path(directory) / "state"
-            env = clean_env(EVERUN_HOME=str(state))
+            env = clean_env(SYLP_HOME=str(state))
             with env:
                 worktree, base = prepare_worktree(root, "memoryint")
                 store = Store()

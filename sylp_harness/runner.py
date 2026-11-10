@@ -26,14 +26,14 @@ def _set_status(callback: StatusCallback, value: str) -> None:
 
 
 def task_home(task_id: str) -> Path:
-    configured_home = os.environ.get("EVERUN_HOME") or os.environ.get("RELAY_HOME")
+    configured_home = (os.environ.get("SYLP_HOME") or os.environ.get("EVERUN_HOME")
+                       or os.environ.get("RELAY_HOME"))
     if configured_home:
         return Path(configured_home) / "tasks" / task_id
-    everrun_home = Path.home() / ".everrun"
-    legacy_home = Path.home() / ".relay"
-    if not (everrun_home / "state.sqlite3").exists() and (legacy_home / "state.sqlite3").exists():
-        return legacy_home / "tasks" / task_id
-    return everrun_home / "tasks" / task_id
+    for home in (Path.home() / ".sylp", Path.home() / ".everrun", Path.home() / ".relay"):
+        if (home / "state.sqlite3").exists():
+            return home / "tasks" / task_id
+    return Path.home() / ".sylp" / "tasks" / task_id
 
 
 @contextlib.contextmanager
@@ -56,14 +56,14 @@ def _task_lock(task_id: str):
             try:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as exc:
-                raise RuntimeError(f"Session {task_id} is already open in another Everrun process") from exc
+                raise RuntimeError(f"Session {task_id} is already open in another Sylp process") from exc
             yield
         else:
             import msvcrt
             try:
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             except OSError as exc:
-                raise RuntimeError(f"Session {task_id} is already open in another Everrun process") from exc
+                raise RuntimeError(f"Session {task_id} is already open in another Sylp process") from exc
             try:
                 yield
             finally:
@@ -83,13 +83,13 @@ def _system_prompt(task: dict[str, Any], *, interactive: bool = False, extra_too
                    memory_block: str = "") -> str:
     criteria = "\n".join(f"- {item}" for item in task["acceptance"]) or "- No explicit acceptance criteria supplied"
     extensions_line = ("Tools whose names start with mcp__ come from configured MCP servers; "
-                       "other extra tools come from local Everrun plugins.\n\n") if extra_tools else ""
+                       "other extra tools come from local Sylp plugins.\n\n") if extra_tools else ""
     memory_section = f"{memory_block}\n\n" if memory_block else ""
     if interactive:
-        ending = "This is an ongoing interactive coding session. Respond naturally to the user's latest message. Continue using tools when useful. Do not emit EVERUN_STATUS markers; after your response, Everrun will wait for the user's next message."
+        ending = "This is an ongoing interactive coding session. Respond naturally to the user's latest message. Continue using tools when useful. Do not emit SYLP_STATUS markers; after your response, Sylp will wait for the user's next message."
     else:
-        ending = "If a consequential ambiguity, destructive action, credential, or external side effect blocks you, stop and ask the user. End your response with exactly `EVERUN_STATUS: WAITING_FOR_INPUT` followed by the question. When the work is complete, end with exactly `EVERUN_STATUS: COMPLETE`, summarize changes, map each acceptance criterion to evidence or mark it unverified, and list the exact checks and results."
-    return f"""You are Everrun, a coding agent running inside a persistent local harness. You own the task loop and use the provided tools to inspect and change the repository. The repository is at the current working directory.
+        ending = "If a consequential ambiguity, destructive action, credential, or external side effect blocks you, stop and ask the user. End your response with exactly `SYLP_STATUS: WAITING_FOR_INPUT` followed by the question. When the work is complete, end with exactly `SYLP_STATUS: COMPLETE`, summarize changes, map each acceptance criterion to evidence or mark it unverified, and list the exact checks and results."
+    return f"""You are Sylp, a coding agent running inside a persistent local harness. You own the task loop and use the provided tools to inspect and change the repository. The repository is at the current working directory.
 
 Work incrementally. Inspect before editing. Use apply_patch for focused changes, and git_status/git_diff to review the worktree. Keep changes focused and reviewable. Run relevant checks with run_command; it will ask the user for approval unless auto-approval was enabled. Never claim checks passed unless you observed their output.
 
@@ -136,7 +136,7 @@ def _write_report(task: dict[str, Any], task_id: str, summary: str, transcript: 
         f"# Task {task_id}\n\n## Goal\n{task['goal']}\n\n## Acceptance criteria\n{criteria}\n\n"
         f"{usage_report}## Agent report\n{summary}\n\n## Transcript excerpt\n{transcript[-12000:]}\n\n"
         f"## Diff summary\n```text\n{diff}\n```\n\n"
-        "Agent-reported verification is not independently validated by Everrun. Review the diff and rerun checks before merging.\n",
+        "Agent-reported verification is not independently validated by Sylp. Review the diff and rerun checks before merging.\n",
         encoding="utf-8",
     )
     # Distill durable facts from the finished task. Best-effort: never blocks the report.
@@ -290,12 +290,12 @@ def _recover_interrupted_tools(task_id: str, provider: str, history: list[dict[s
         recorded = finished_output.get(str(call["id"]))
         if recorded:
             explanation = (
-                "Everrun recorded this tool as finished before the process stopped. Inspect the current state "
+                "Sylp recorded this tool as finished before the process stopped. Inspect the current state "
                 "before repeating it. Recorded result:\n" + recorded
             )
         else:
             explanation = (
-                "Everrun stopped while this tool call was in progress. Its effects may be partial or complete. "
+                "Sylp stopped while this tool call was in progress. Its effects may be partial or complete. "
                 "Do not repeat the action yet; inspect the current repository and relevant system state first."
             )
             captured = "".join(partial_output.get(str(call["id"]), []))
@@ -312,7 +312,7 @@ def _memory_query(task: dict[str, Any], history: list[dict[str, Any]]) -> str:
     for message in reversed(history):
         if message.get("role") == "user" and isinstance(message.get("content"), str):
             text = message["content"].strip()
-            if text and not text.startswith("Persistent Everrun task checkpoint"):
+            if text and not text.startswith("Persistent Sylp task checkpoint"):
                 parts.append(text)
                 break
     return "\n".join(parts)[:2000]
@@ -372,15 +372,15 @@ def _show_session_history(history: list[dict[str, Any]]) -> None:
                 if kind in {"text", "output_text", "input_text"}:
                     chunks.append(str(item.get("text") or ""))
                 elif kind == "tool_use":
-                    visible.append(("Everrun", f"Using {item.get('name', 'tool')}"))
+                    visible.append(("Sylp", f"Using {item.get('name', 'tool')}"))
         elif message.get("type") == "message" and role == "assistant":
             chunks.extend(str(item.get("text") or "") for item in message.get("content", [])
                           if isinstance(item, dict) and item.get("type") in {"output_text", "text"})
         elif message.get("type") == "function_call":
-            visible.append(("Everrun", f"Using {message.get('name', 'tool')}"))
+            visible.append(("Sylp", f"Using {message.get('name', 'tool')}"))
         detail = "\n".join(chunk for chunk in chunks if chunk).strip()
         if detail and role in {"user", "assistant"}:
-            visible.append(("You" if role == "user" else "Everrun", detail))
+            visible.append(("You" if role == "user" else "Sylp", detail))
     print("Recent conversation:")
     for role, detail in visible[-30:]:
         print(f"{role}> {detail[:1200]}")
@@ -463,7 +463,7 @@ def _compact_history(task_id: str, task: dict[str, Any], provider: str, history:
     summary = str(result.get("text") or "").strip()
     if not summary:
         raise RuntimeError("Model returned an empty context checkpoint")
-    checkpoint = {"role": "user", "content": "Persistent Everrun task checkpoint. Continue from this state and inspect the worktree before editing:\n\n" + summary}
+    checkpoint = {"role": "user", "content": "Persistent Sylp task checkpoint. Continue from this state and inspect the worktree before editing:\n\n" + summary}
     store.add_message(task_id, provider, checkpoint, checkpoint=True)
     store.event(task_id, "context_compacted", {"previous_chars": size, "checkpoint_chars": len(summary)})
     # Distill durable facts out of the pre-compaction history. Best-effort: a
@@ -494,7 +494,7 @@ def _pause_for_switch(task_id: str, target: str, store: Store, on_status: Status
         store.update(task_id, status="paused", summary=summary[:4000])
     store.event(task_id, "session_switched", {"to": target})
     print(f"Session paused. Switching to session {target} "
-          f"(outside the full-screen UI, open it with: everrun resume {target})")
+          f"(outside the full-screen UI, open it with: sylp resume {target})")
     return target
 
 
@@ -524,7 +524,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
         raise RuntimeError("This task is awaiting review. Start a new task for follow-up work.")
     provider = task["provider"]
     if not task["model"]:
-        raise RuntimeError("No model selected. Run `everrun models` and start the task with `--model <model>`.")
+        raise RuntimeError("No model selected. Run `sylp models` and start the task with `--model <model>`.")
 
     if extensions is None:
         extensions = ExtensionSet.load(Path(task["repo"]))
@@ -574,7 +574,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
         user_input, history = _read_interactive_message(task_id, task, provider, history, store, on_status)
         if user_input in {"/exit", "/quit"}:
             store.update(task_id, status="paused")
-            print(f"Session remains paused. Resume with: everrun resume {task_id}")
+            print(f"Session remains paused. Resume with: sylp resume {task_id}")
             return
         switch = _switch_target(user_input)
         if switch:
@@ -594,7 +594,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
 
     store.update(task_id, status="running")
     store.event(task_id, "model_run_started", {"provider": provider, "model": task["model"]})
-    print(f"Everrun task {task_id} running with {provider}/{task['model']} in {task['worktree']}", flush=True)
+    print(f"Sylp task {task_id} running with {provider}/{task['model']} in {task['worktree']}", flush=True)
     transcript: list[str] = []
     for turn in range(MAX_TURNS_PER_INVOCATION):
         try:
@@ -602,7 +602,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
             for attempt in range(2):
                 try:
                     _set_status(on_status, f"Thinking · turn {turn + 1}")
-                    print("Everrun> ", end="", flush=True)
+                    print("Sylp> ", end="", flush=True)
                     result = complete(provider, task["model"], history, tool_schemas,
                                       _system_prompt(task, interactive=interactive,
                                                      extra_tools=bool(extension_schemas),
@@ -626,7 +626,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
             _set_status(on_status, "Paused")
             store.update(task_id, status="paused")
             store.event(task_id, "interrupted", {"turn": turn})
-            print(f"\nPaused. Resume with: everrun resume {task_id}")
+            print(f"\nPaused. Resume with: sylp resume {task_id}")
             return
         except Exception as exc:
             _set_status(on_status, "Paused after error")
@@ -651,7 +651,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
             _set_status(on_status, "Paused")
             store.update(task_id, status="paused")
             store.event(task_id, "interrupted", {"turn": turn, "during": "tool_execution"})
-            print(f"\nPaused. Resume with: everrun resume {task_id}")
+            print(f"\nPaused. Resume with: sylp resume {task_id}")
             return
         history = store.messages(task_id)
         store.event(task_id, "model_turn", {"turn": turn + 1, "provider": provider, "model": task["model"],
@@ -668,17 +668,17 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
             store.event(task_id, "model_output_continued", {"turn": turn + 1, "reason": result["finish_reason"]})
             continue
         full_text = "\n".join(transcript)
-        if "EVERUN_STATUS: WAITING_FOR_INPUT" in text:
-            question = text.rsplit("EVERUN_STATUS: WAITING_FOR_INPUT", 1)[-1].strip()
+        if "SYLP_STATUS: WAITING_FOR_INPUT" in text:
+            question = text.rsplit("SYLP_STATUS: WAITING_FOR_INPUT", 1)[-1].strip()
             if interactive:
-                print(f"\nEverrun needs your input: {question}")
+                print(f"\nSylp needs your input: {question}")
                 _set_status(on_status, "Waiting for your answer")
                 user_input, history = _read_interactive_message(task_id, task, provider, history, store, on_status)
                 if user_input in {"/exit", "/quit"}:
                     _set_status(on_status, "Paused")
                     store.update(task_id, status="paused")
                     store.event(task_id, "session_paused", {"turn": turn + 1})
-                    print(f"Session paused. Resume with: everrun resume {task_id}")
+                    print(f"Session paused. Resume with: sylp resume {task_id}")
                     return
                 switch = _switch_target(user_input)
                 if switch:
@@ -698,7 +698,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
                 continue
             store.update(task_id, status="waiting_for_input", summary=question[:1000])
             store.event(task_id, "input_requested", {"question": question[:1000]})
-            print(f"Task is waiting for your input. Resume with: everrun resume {task_id} --answer \"...\"")
+            print(f"Task is waiting for your input. Resume with: sylp resume {task_id} --answer \"...\"")
             return
         if not text.strip() and not calls:
             response_id = result.get("response_id")
@@ -715,7 +715,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
                 _set_status(on_status, "Paused")
                 store.update(task_id, status="paused", summary=text.strip()[:4000])
                 store.event(task_id, "session_paused", {"turn": turn + 1})
-                print(f"Session paused. Resume with: everrun resume {task_id}")
+                print(f"Session paused. Resume with: sylp resume {task_id}")
                 return
             switch = _switch_target(user_input)
             if switch:
@@ -746,7 +746,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
     store.update(task_id, status="paused")
     store.event(task_id, "turn_limit", {"limit": MAX_TURNS_PER_INVOCATION})
     _set_status(on_status, "Paused at turn limit")
-    print(f"Paused after {MAX_TURNS_PER_INVOCATION} model turns. Resume with: everrun resume {task_id}")
+    print(f"Paused after {MAX_TURNS_PER_INVOCATION} model turns. Resume with: sylp resume {task_id}")
 
 
 def run_task(task_id: str, *, answer: str | None = None, interactive: bool = False,

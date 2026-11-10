@@ -11,10 +11,10 @@ from .plugins import PluginRegistry
 
 def state_home(env: dict[str, str] | None = None) -> Path:
     env = os.environ if env is None else env
-    configured = env.get("EVERUN_HOME") or env.get("RELAY_HOME")
+    configured = env.get("SYLP_HOME") or env.get("EVERUN_HOME") or env.get("RELAY_HOME")
     if configured:
         return Path(configured)
-    return Path.home() / ".everrun"
+    return Path.home() / ".sylp"
 
 
 class ExtensionSet:

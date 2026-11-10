@@ -48,9 +48,9 @@ def _snapshot_checkout(root: Path, path: Path) -> None:
 def prepare_worktree(repo: Path, task_id: str) -> tuple[Path, str]:
     root = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
     base = git(root, "rev-parse", "HEAD")
-    path = common_dir(root) / "everrun-worktrees" / task_id
+    path = common_dir(root) / "sylp-worktrees" / task_id
     path.parent.mkdir(parents=True, exist_ok=True)
-    git(root, "worktree", "add", "-b", f"everrun/{task_id}", str(path), base)
+    git(root, "worktree", "add", "-b", f"sylp/{task_id}", str(path), base)
     # A task should start from what the developer currently sees, including
     # uncommitted edits. Starting from HEAD made a new worktree silently omit
     # the very source changes the user had just installed and launched.
@@ -58,7 +58,7 @@ def prepare_worktree(repo: Path, task_id: str) -> tuple[Path, str]:
         _snapshot_checkout(root, path)
     except Exception:
         subprocess.run(["git", "worktree", "remove", "--force", str(path)], cwd=root, capture_output=True)
-        subprocess.run(["git", "branch", "-D", f"everrun/{task_id}"], cwd=root, capture_output=True)
+        subprocess.run(["git", "branch", "-D", f"sylp/{task_id}"], cwd=root, capture_output=True)
         raise
     return path, base
 

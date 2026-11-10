@@ -61,7 +61,7 @@ def _interactive() -> argparse.Namespace:
                 raise RuntimeError(f"No resumable session {selected!r} for this repository")
             return argparse.Namespace(command="resume", task_id=selected, answer=None, model=None,
                                       batch=False)
-    configured_provider = os.environ.get("EVERUN_PROVIDER") or default_provider()
+    configured_provider = os.environ.get("SYLP_PROVIDER") or default_provider()
     provider = configured_provider
     if not provider:
         connected = [candidate for candidate in PROVIDERS if is_connected(candidate)]
@@ -79,17 +79,17 @@ def _interactive() -> argparse.Namespace:
         else:
             provider = "openai"
     if provider not in PROVIDERS:
-        raise RuntimeError(f"Unknown EVERUN_PROVIDER {provider!r}; choose from {', '.join(PROVIDERS)}")
+        raise RuntimeError(f"Unknown SYLP_PROVIDER {provider!r}; choose from {', '.join(PROVIDERS)}")
     if not is_connected(provider):
         if provider == "openai":
-            action = "everrun auth login openai"
+            action = "sylp auth login openai"
         elif provider == "antigravity":
-            action = "everrun auth login antigravity"
+            action = "sylp auth login antigravity"
         else:
-            action = f"everrun auth set {provider}"
-        raise RuntimeError(f"No {provider} account is connected. Connect it with `{action}`, then start Everrun again.")
+            action = f"sylp auth set {provider}"
+        raise RuntimeError(f"No {provider} account is connected. Connect it with `{action}`, then start Sylp again.")
 
-    model = os.environ.get("EVERUN_MODEL") or default_model(provider)
+    model = os.environ.get("SYLP_MODEL") or default_model(provider)
     if not model:
         available = list_models(provider)
         if not available:
@@ -104,12 +104,12 @@ def _interactive() -> argparse.Namespace:
     print(f"Using {provider}/{model}.\n")
     return argparse.Namespace(command="chat", goal=None,
                               repo=str(repo), accept=[], provider=provider, model=model,
-                              auto_approve=os.environ.get("EVERUN_AUTO_APPROVE", "").lower()
+                              auto_approve=os.environ.get("SYLP_AUTO_APPROVE", "").lower()
                               in {"1", "true", "yes"})
 
 
 def _main(*, ui: TerminalUI | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="everrun", description="A persistent coding harness powered directly by model providers")
+    parser = argparse.ArgumentParser(prog="sylp", description="A persistent coding harness powered directly by model providers")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command")
 
@@ -117,8 +117,8 @@ def _main(*, ui: TerminalUI | None = None) -> None:
     start.add_argument("goal", help="Task goal")
     start.add_argument("--repo", default=".", help="Git repository (default: current directory)")
     start.add_argument("--accept", action="append", default=[], help="Acceptance criterion; repeat as needed")
-    start.add_argument("--provider", type=_provider_name, default=os.environ.get("EVERUN_PROVIDER", "openai"), help="Model provider")
-    start.add_argument("--model", default=os.environ.get("EVERUN_MODEL"), help="Model ID from `everrun models`")
+    start.add_argument("--provider", type=_provider_name, default=os.environ.get("SYLP_PROVIDER", "openai"), help="Model provider")
+    start.add_argument("--model", default=os.environ.get("SYLP_MODEL"), help="Model ID from `sylp models`")
     start.add_argument("--auto-approve", action="store_true", help="Run shell tool calls without asking each time")
 
     resume = sub.add_parser("resume", help="Reopen a paused persistent coding session")
@@ -128,7 +128,7 @@ def _main(*, ui: TerminalUI | None = None) -> None:
     resume.add_argument("--batch", action="store_true", help="Resume autonomously until completion or another pause")
 
     models = sub.add_parser("models", help="List models available from a connected provider")
-    models.add_argument("--provider", type=_provider_name, default=os.environ.get("EVERUN_PROVIDER", "openai"))
+    models.add_argument("--provider", type=_provider_name, default=os.environ.get("SYLP_PROVIDER", "openai"))
 
     auth = sub.add_parser("auth", help="Connect or disconnect a model provider")
     auth_sub = auth.add_subparsers(dest="auth_command", required=True)
@@ -147,9 +147,9 @@ def _main(*, ui: TerminalUI | None = None) -> None:
     report.add_argument("task_id")
     sub.add_parser("list", help="List tasks")
     mcp_cmd = sub.add_parser("mcp", help="List configured MCP servers and probe their tools")
-    mcp_cmd.add_argument("--repo", default=".", help="Repository whose .everrun/mcp.json applies (default: current directory)")
-    plugins_cmd = sub.add_parser("plugins", help="List discovered Everrun plugins and their tools")
-    plugins_cmd.add_argument("--repo", default=".", help="Repository whose .everrun/plugins/ applies (default: current directory)")
+    mcp_cmd.add_argument("--repo", default=".", help="Repository whose .sylp/mcp.json applies (default: current directory)")
+    plugins_cmd = sub.add_parser("plugins", help="List discovered Sylp plugins and their tools")
+    plugins_cmd.add_argument("--repo", default=".", help="Repository whose .sylp/plugins/ applies (default: current directory)")
     sandbox_cmd = sub.add_parser("sandbox", help="Show the shell sandbox status")
     sandbox_cmd.add_argument("--test", action="store_true", help="Also run a probe command through the sandbox")
     memory_cmd = sub.add_parser("memory", help="List, search, or forget durable memories")
@@ -162,20 +162,20 @@ def _main(*, ui: TerminalUI | None = None) -> None:
         try:
             args = _interactive()
         except Exception as exc:
-            print(f"everrun: {exc}", file=sys.stderr)
+            print(f"sylp: {exc}", file=sys.stderr)
             raise SystemExit(1)
 
     store = Store()
     try:
         if args.command == "run":
             if not args.model:
-                raise RuntimeError("Choose a model with `everrun models --provider <provider>`, then pass `--model <model-id>`")
+                raise RuntimeError("Choose a model with `sylp models --provider <provider>`, then pass `--model <model-id>`")
             if not is_connected(args.provider):
                 if args.provider == "openai":
-                    raise RuntimeError("Connect with `everrun auth login openai` or save an API key with `everrun auth set openai`")
+                    raise RuntimeError("Connect with `sylp auth login openai` or save an API key with `sylp auth set openai`")
                 if args.provider == "antigravity":
-                    raise RuntimeError("Connect with `everrun auth login antigravity` or save an API key with `everrun auth set antigravity`")
-                raise RuntimeError(f"Connect with `everrun auth set {args.provider}` before starting a task")
+                    raise RuntimeError("Connect with `sylp auth login antigravity` or save an API key with `sylp auth set antigravity`")
+                raise RuntimeError(f"Connect with `sylp auth set {args.provider}` before starting a task")
             repo = _git_root(Path(args.repo).resolve())
             task_id = uuid.uuid4().hex[:10]
             worktree, base = prepare_worktree(repo, task_id)
@@ -230,7 +230,7 @@ def _main(*, ui: TerminalUI | None = None) -> None:
                         break
                     next_task = store.get(switch_to)
                     if ui is None or next_task is None:
-                        print(f"Open the session with: everrun resume {switch_to}")
+                        print(f"Open the session with: sylp resume {switch_to}")
                         break
                     current_id = switch_to
                     ui.title = f"{repo.name} · {next_task['provider']}/{next_task['model']}"
@@ -264,7 +264,7 @@ def _main(*, ui: TerminalUI | None = None) -> None:
                         break
                     next_task = store.get(switch_to)
                     if ui is None or next_task is None:
-                        print(f"Open the session with: everrun resume {switch_to}")
+                        print(f"Open the session with: sylp resume {switch_to}")
                         break
                     current_id = switch_to
                     ui.title = f"{Path(next_task['repo']).name} · {next_task['provider']}/{next_task['model']}"
@@ -398,7 +398,7 @@ def _main(*, ui: TerminalUI | None = None) -> None:
             registry = PluginRegistry().load(state_home(), repo)
             files = discover(state_home(), repo)
             if not files:
-                print("No plugins found. Add .py files to ~/.everrun/plugins/ or <repo>/.everrun/plugins/.")
+                print("No plugins found. Add .py files to ~/.sylp/plugins/ or <repo>/.sylp/plugins/.")
             for schema in registry.schemas():
                 print(f"{schema['name']}\t{schema['description']}")
             for error in registry.errors:
@@ -437,7 +437,7 @@ def _main(*, ui: TerminalUI | None = None) -> None:
             policy = policy_from_env()
             print(f"mode: {policy.mode}\nbackend: {describe(policy)}")
             if args.test:
-                command, note = wrap_command("echo everrun-sandbox-ok", Path.cwd(), policy)
+                command, note = wrap_command("echo sylp-sandbox-ok", Path.cwd(), policy)
                 result = subprocess.run(command, shell=True, text=True, capture_output=True, timeout=30)
                 if note:
                     print(note)
@@ -445,7 +445,7 @@ def _main(*, ui: TerminalUI | None = None) -> None:
         elif args.command == "quit":
             print("No prompt entered; no session started.")
     except Exception as exc:
-        print(f"everrun: {exc}", file=sys.stderr)
+        print(f"sylp: {exc}", file=sys.stderr)
         raise SystemExit(1)
 
 

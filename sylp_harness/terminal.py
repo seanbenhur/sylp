@@ -103,7 +103,7 @@ def wrap_spans(spans: list[tuple[str, str]], width: int) -> list[list[tuple[str,
 
 
 class TerminalUI:
-    """Small full-screen terminal shell for Everrun's persistent chat loop."""
+    """Small full-screen terminal shell for Sylp's persistent chat loop."""
 
     def __init__(self, title: str):
         self.title = title
@@ -178,7 +178,7 @@ class TerminalUI:
             pass
         self._draw()
         self._ticker_stop = threading.Event()
-        self._ticker = threading.Thread(target=self._tick, daemon=True, name="everrun-tui-ticker")
+        self._ticker = threading.Thread(target=self._tick, daemon=True, name="sylp-tui-ticker")
         self._ticker.start()
         try:
             callback()
@@ -374,7 +374,7 @@ class TerminalUI:
         if self._list_sessions is not None and hasattr(self.screen, "timeout"):
             try:
                 # Wake periodically so the session rail and changes pane pick up
-                # other Everrun processes while the prompt sits idle.
+                # other Sylp processes while the prompt sits idle.
                 self.screen.timeout(_IDLE_REFRESH_MS)
             except curses.error:
                 pass
@@ -554,7 +554,7 @@ class TerminalUI:
         yn = _YN.match(line)
         if yn:
             return [("❯ ", "user_marker"), (yn.group(1), "text")]
-        if line.startswith("Everrun> ") or line.startswith("assistant> "):
+        if line.startswith("Sylp> ") or line.startswith("assistant> "):
             rest = line.split("> ", 1)[1]
             return [("• ", "assistant_marker")] + self._prose_spans(rest, in_code)
         label = _LABEL.match(line)
@@ -562,7 +562,7 @@ class TerminalUI:
             return [("❯ ", "user_marker"), (label.group(2), "text")]
         if line.startswith("Allow command"):
             return [(line, "approval")]
-        if line.startswith("everrun:"):
+        if line.startswith("sylp:"):
             return [(line, "error")]
         return self._prose_spans(line, in_code)
 

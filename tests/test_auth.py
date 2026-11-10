@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from everrun_harness import auth, providers
+from sylp_harness import auth, providers
 
 
 class AuthTests(unittest.TestCase):

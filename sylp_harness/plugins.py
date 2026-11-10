@@ -1,8 +1,8 @@
-"""Local Everrun plugins: trusted Python files that add model tools.
+"""Local Sylp plugins: trusted Python files that add model tools.
 
-A plugin is a .py file in ~/.everrun/plugins/ or <repo>/.everrun/plugins/
+A plugin is a .py file in ~/.sylp/plugins/ or <repo>/.sylp/plugins/
 defining register() -> list of tool dicts. Plugins run in-process with
-Everrun's full privileges; only install plugins you trust. See
+Sylp's full privileges; only install plugins you trust. See
 docs/extensions.md for the contract.
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ def plugin_dirs(home: Path | None = None, repo: Path | None = None) -> list[Path
     if home is not None:
         dirs.append(Path(home) / "plugins")
     if repo is not None:
-        dirs.append(Path(repo) / ".everrun" / "plugins")
+        dirs.append(Path(repo) / ".sylp" / "plugins")
     return dirs
 
 
@@ -66,7 +66,7 @@ class PluginRegistry:
     def load(self, home: Path | None = None, repo: Path | None = None) -> "PluginRegistry":
         reserved = set(_BUILTIN_NAMES)
         for path in discover(home, repo):
-            module_name = f"everrun_plugin_{path.stem}_{abs(hash(path))}"
+            module_name = f"sylp_plugin_{path.stem}_{abs(hash(path))}"
             try:
                 spec = importlib.util.spec_from_file_location(module_name, path)
                 if spec is None or spec.loader is None:

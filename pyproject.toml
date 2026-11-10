@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "everrun"
+name = "sylp"
 version = "0.1.0"
 description = "A standalone local-first coding harness with persistent model-driven tasks"
 readme = "README.md"
@@ -16,7 +16,7 @@ dependencies = ["PyJWT[crypto]>=2.10,<3"]
 antigravity = ["google-antigravity>=0.1.0"]
 
 [project.scripts]
-everrun = "everrun_harness.cli:main"
+sylp = "sylp_harness.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

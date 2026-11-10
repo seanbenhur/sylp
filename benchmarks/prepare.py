@@ -23,7 +23,7 @@ def _sha256(path: Path) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prepare an isolated Everrun/Codex benchmark case")
+    parser = argparse.ArgumentParser(description="Prepare an isolated Sylp/Codex benchmark case")
     parser.add_argument("case", help="Case ID from benchmarks/cases.json")
     parser.add_argument("destination", type=Path, help="New, empty destination directory for this run")
     args = parser.parse_args()
@@ -40,8 +40,8 @@ def main() -> None:
     project = destination / "repo"
     shutil.copytree(ROOT / case["project"], project, dirs_exist_ok=True)
     _git(project, "init", "-b", "main")
-    env = {**os.environ, "GIT_AUTHOR_NAME": "Everrun benchmark", "GIT_AUTHOR_EMAIL": "benchmark@example.invalid",
-           "GIT_COMMITTER_NAME": "Everrun benchmark", "GIT_COMMITTER_EMAIL": "benchmark@example.invalid"}
+    env = {**os.environ, "GIT_AUTHOR_NAME": "Sylp benchmark", "GIT_AUTHOR_EMAIL": "benchmark@example.invalid",
+           "GIT_COMMITTER_NAME": "Sylp benchmark", "GIT_COMMITTER_EMAIL": "benchmark@example.invalid"}
     _git(project, "add", "-A", env=env)
     _git(project, "commit", "-m", f"Benchmark baseline: {args.case}", env=env)
     baseline = _git(project, "rev-parse", "HEAD")
