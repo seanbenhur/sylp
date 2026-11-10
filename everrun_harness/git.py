@@ -12,6 +12,13 @@ def git(repo: Path, *args: str) -> str:
     return p.stdout.strip()
 
 
+def common_dir(repo: Path) -> Path:
+    git_dir = Path(git(repo, "rev-parse", "--git-common-dir"))
+    if not git_dir.is_absolute():
+        git_dir = (repo / git_dir).resolve()
+    return git_dir
+
+
 def _snapshot_checkout(root: Path, path: Path) -> None:
     # Include staged and unstaged tracked edits in the task's starting point.
     patch = subprocess.run(["git", "diff", "--binary", "HEAD"], cwd=root, capture_output=True)
@@ -41,10 +48,7 @@ def _snapshot_checkout(root: Path, path: Path) -> None:
 def prepare_worktree(repo: Path, task_id: str) -> tuple[Path, str]:
     root = Path(git(repo, "rev-parse", "--show-toplevel")).resolve()
     base = git(root, "rev-parse", "HEAD")
-    git_dir = Path(git(root, "rev-parse", "--git-common-dir"))
-    if not git_dir.is_absolute():
-        git_dir = (root / git_dir).resolve()
-    path = git_dir / "everrun-worktrees" / task_id
+    path = common_dir(root) / "everrun-worktrees" / task_id
     path.parent.mkdir(parents=True, exist_ok=True)
     git(root, "worktree", "add", "-b", f"everrun/{task_id}", str(path), base)
     # A task should start from what the developer currently sees, including

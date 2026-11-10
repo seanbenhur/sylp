@@ -186,7 +186,10 @@ def _search_files(root: Path, query: str, path: str | None = None) -> str:
 
 
 def execute_tool(name: str, arguments: dict[str, Any], root: Path, *, auto_approve: bool = False,
-                 on_output: Any | None = None, on_checkpoint: Any | None = None) -> str:
+                 on_output: Any | None = None, on_checkpoint: Any | None = None,
+                 extensions: Any | None = None, sandbox: Any | None = None) -> str:
+    if extensions is not None and extensions.handles(name):
+        return _clip(extensions.call(name, arguments, root))
     if name == "list_files":
         return _list_files(root, str(arguments.get("path") or "."))
     if name == "read_file":
@@ -228,13 +231,22 @@ def execute_tool(name: str, arguments: dict[str, Any], root: Path, *, auto_appro
         command = str(arguments["command"])
         timeout = max(1, min(600, int(arguments.get("timeout_seconds", 120))))
         if not auto_approve:
+            prompt = f"\nAllow command in task worktree?\n  {command}"
+            if sandbox is not None:
+                from .sandbox import describe
+                prompt += f"\n  [sandbox: {describe(sandbox)}]"
             try:
-                answer = input(f"\nAllow command in task worktree?\n  {command}\n[y/N] ").strip().lower()
+                answer = input(prompt + "\n[y/N] ").strip().lower()
             except EOFError:
                 answer = ""
             if answer in {"/exit", "/quit"}:
                 raise KeyboardInterrupt
             if answer not in {"y", "yes"}:
                 return "Command denied by user. Continue using other tools or ask for guidance."
-        return _run_command(command, root, timeout, on_output, on_checkpoint)
+        note = None
+        if sandbox is not None:
+            from .sandbox import wrap_command
+            command, note = wrap_command(command, root, sandbox)
+        result = _run_command(command, root, timeout, on_output, on_checkpoint)
+        return f"{note}\n{result}" if note else result
     raise ValueError(f"Unknown tool: {name}")
