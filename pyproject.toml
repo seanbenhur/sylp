@@ -20,3 +20,4 @@ sylp = "sylp_harness.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["sylp_harness*"]
