@@ -7,8 +7,10 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .git import diff_summary, refresh_clean_worktree
+from .extensions import ExtensionSet
+from .git import common_dir, diff_summary, refresh_clean_worktree
 from .providers import EmptyModelResponse, complete, list_models, save_default_model
+from .sandbox import SandboxPolicy, policy_from_env
 from .store import Store
 from .tools import TOOL_SCHEMAS, execute_tool
 
@@ -76,8 +78,10 @@ def _task_lock(task_id: str):
         handle.close()
 
 
-def _system_prompt(task: dict[str, Any], *, interactive: bool = False) -> str:
+def _system_prompt(task: dict[str, Any], *, interactive: bool = False, extra_tools: bool = False) -> str:
     criteria = "\n".join(f"- {item}" for item in task["acceptance"]) or "- No explicit acceptance criteria supplied"
+    extensions_line = ("Tools whose names start with mcp__ come from configured MCP servers; "
+                       "other extra tools come from local Everrun plugins.\n\n") if extra_tools else ""
     if interactive:
         ending = "This is an ongoing interactive coding session. Respond naturally to the user's latest message. Continue using tools when useful. Do not emit EVERUN_STATUS markers; after your response, Everrun will wait for the user's next message."
     else:
@@ -86,7 +90,7 @@ def _system_prompt(task: dict[str, Any], *, interactive: bool = False) -> str:
 
 Work incrementally. Inspect before editing. Use apply_patch for focused changes, and git_status/git_diff to review the worktree. Keep changes focused and reviewable. Run relevant checks with run_command; it will ask the user for approval unless auto-approval was enabled. Never claim checks passed unless you observed their output.
 
-{ending}
+{extensions_line}{ending}
 
 Task goal:
 {task['goal']}
@@ -136,7 +140,8 @@ def _write_report(task: dict[str, Any], task_id: str, summary: str, transcript: 
 
 
 def _tool_outputs(task_id: str, task: dict[str, Any], calls: list[dict[str, Any]], provider: str, store: Store,
-                  on_status: StatusCallback = None) -> list[dict[str, Any]]:
+                  on_status: StatusCallback = None, extensions: ExtensionSet | None = None,
+                  sandbox: SandboxPolicy | None = None) -> list[dict[str, Any]]:
     outputs = []
     for index, call in enumerate(calls):
         name = str(call.get("name") or "")
@@ -174,7 +179,7 @@ def _tool_outputs(task_id: str, task: dict[str, Any], calls: list[dict[str, Any]
         try:
             result = execute_tool(name, arguments, Path(task["worktree"]),
                                   auto_approve=bool(task["auto_approve"]), on_output=on_output,
-                                  on_checkpoint=flush_output)
+                                  on_checkpoint=flush_output, extensions=extensions, sandbox=sandbox)
         except KeyboardInterrupt:
             flush_output()
             result = "Tool interrupted by the user. Inspect the worktree before retrying this action."
@@ -428,7 +433,8 @@ def _read_interactive_message(task_id: str, task: dict[str, Any], provider: str,
 
 
 def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = False,
-              store: Store | None = None, on_status: StatusCallback = None) -> None:
+              store: Store | None = None, on_status: StatusCallback = None,
+              extensions: ExtensionSet | None = None) -> None:
     _set_status(on_status, "Opening session")
     store = store or Store()
     task = store.get(task_id)
@@ -439,6 +445,23 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
     provider = task["provider"]
     if not task["model"]:
         raise RuntimeError("No model selected. Run `everrun models` and start the task with `--model <model>`.")
+
+    if extensions is None:
+        extensions = ExtensionSet.load(Path(task["repo"]))
+    extension_schemas = extensions.schemas()
+    extension_summary = extensions.summary()
+    if extension_summary["mcp_tools"] or extension_summary["plugin_tools"] or extension_summary["errors"]:
+        store.event(task_id, "extensions_loaded", extension_summary)
+    for notice in extensions.notices():
+        print(f"[extensions] {notice}", flush=True)
+    tool_schemas = TOOL_SCHEMAS + extension_schemas
+
+    sandbox = policy_from_env()
+    if sandbox.mode != "off":
+        try:
+            sandbox.writable.append(common_dir(Path(task["repo"])))
+        except Exception:
+            pass  # the worktree path alone is still confined
 
     if refresh_clean_worktree(Path(task["repo"]), Path(task["worktree"]), task["base_commit"]):
         store.event(task_id, "worktree_refreshed_from_checkout", {"base_commit": task["base_commit"]})
@@ -491,8 +514,9 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
                 try:
                     _set_status(on_status, f"Thinking · turn {turn + 1}")
                     print("Everrun> ", end="", flush=True)
-                    result = complete(provider, task["model"], history, TOOL_SCHEMAS,
-                                      _system_prompt(task, interactive=interactive))
+                    result = complete(provider, task["model"], history, tool_schemas,
+                                      _system_prompt(task, interactive=interactive,
+                                                     extra_tools=bool(extension_schemas)))
                     if not str(result.get("text") or "").strip() and not result.get("tool_calls"):
                         raise EmptyModelResponse(
                             f"{provider} returned no user-visible text or tool calls.",
@@ -531,7 +555,8 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
         calls = result.get("tool_calls", [])
         try:
             if calls:
-                _tool_outputs(task_id, task, calls, provider, store, on_status)
+                _tool_outputs(task_id, task, calls, provider, store, on_status,
+                              extensions=extensions, sandbox=sandbox)
         except KeyboardInterrupt:
             _set_status(on_status, "Paused")
             store.update(task_id, status="paused")
@@ -632,7 +657,14 @@ def run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fal
              on_status: StatusCallback = None) -> None:
     with _task_lock(task_id):
         store = Store()
+        extensions = None
         try:
-            _run_task(task_id, answer=answer, interactive=interactive, store=store, on_status=on_status)
+            task = store.get(task_id)
+            if task:
+                extensions = ExtensionSet.load(Path(task["repo"]))
+            _run_task(task_id, answer=answer, interactive=interactive, store=store, on_status=on_status,
+                      extensions=extensions)
         finally:
+            if extensions is not None:
+                extensions.close()
             store.close()

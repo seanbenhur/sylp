@@ -146,6 +146,12 @@ def _main(*, ui: TerminalUI | None = None) -> None:
     report = sub.add_parser("report", help="Print the final review report")
     report.add_argument("task_id")
     sub.add_parser("list", help="List tasks")
+    mcp_cmd = sub.add_parser("mcp", help="List configured MCP servers and probe their tools")
+    mcp_cmd.add_argument("--repo", default=".", help="Repository whose .everrun/mcp.json applies (default: current directory)")
+    plugins_cmd = sub.add_parser("plugins", help="List discovered Everrun plugins and their tools")
+    plugins_cmd.add_argument("--repo", default=".", help="Repository whose .everrun/plugins/ applies (default: current directory)")
+    sandbox_cmd = sub.add_parser("sandbox", help="Show the shell sandbox status")
+    sandbox_cmd.add_argument("--test", action="store_true", help="Also run a probe command through the sandbox")
     args = parser.parse_args()
     if args.command is None:
         try:
@@ -329,6 +335,52 @@ def _main(*, ui: TerminalUI | None = None) -> None:
             if not path.exists():
                 raise RuntimeError(f"No report exists for {args.task_id}")
             print(path.read_text(encoding="utf-8"))
+        elif args.command == "mcp":
+            from . import mcp as mcp_module
+            from .extensions import state_home
+            repo = Path(args.repo).resolve()
+            config = mcp_module.load_config(state_home(), repo)
+            if not config:
+                print("No MCP servers configured. See docs/extensions.md for the mcp.json format.")
+            manager = mcp_module.MCPManager.start(config)
+            try:
+                for name in sorted(config):
+                    if name not in manager.servers:
+                        error = next((e for e in manager.errors if e.startswith(f"{name}:")), "failed to start")
+                        print(f"{name}: unavailable - {error}")
+                        continue
+                    prefix = mcp_module.qualify(name, "")
+                    tools = [schema["name"] for schema in manager.schemas()
+                             if schema["name"].startswith(prefix)]
+                    print(f"{name}: {len(tools)} tools")
+                    for tool in tools:
+                        print(f"  {tool}")
+            finally:
+                manager.close()
+        elif args.command == "plugins":
+            from .extensions import state_home
+            from .plugins import PluginRegistry, discover
+            repo = Path(args.repo).resolve()
+            registry = PluginRegistry().load(state_home(), repo)
+            files = discover(state_home(), repo)
+            if not files:
+                print("No plugins found. Add .py files to ~/.everrun/plugins/ or <repo>/.everrun/plugins/.")
+            for schema in registry.schemas():
+                print(f"{schema['name']}\t{schema['description']}")
+            for error in registry.errors:
+                print(f"error: {error}", file=sys.stderr)
+            if registry.errors:
+                raise SystemExit(1)
+        elif args.command == "sandbox":
+            from .sandbox import describe, policy_from_env, wrap_command
+            policy = policy_from_env()
+            print(f"mode: {policy.mode}\nbackend: {describe(policy)}")
+            if args.test:
+                command, note = wrap_command("echo everrun-sandbox-ok", Path.cwd(), policy)
+                result = subprocess.run(command, shell=True, text=True, capture_output=True, timeout=30)
+                if note:
+                    print(note)
+                print(result.stdout.strip() or result.stderr.strip() or f"exit {result.returncode}")
         elif args.command == "quit":
             print("No prompt entered; no session started.")
     except Exception as exc:
