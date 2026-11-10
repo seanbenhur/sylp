@@ -17,7 +17,7 @@ Everrun is a standalone, local-first coding harness. It talks to model providers
 | `everrun_harness/extensions.py` | Combines MCP servers and plugins into one tool registry per task run. |
 | `everrun_harness/store.py` | SQLite persistence for tasks, events, and conversation messages. WAL mode, owner-only file permissions. |
 | `everrun_harness/git.py` | Worktree and branch preparation for each task. |
-| `everrun_harness/terminal.py` | The full-screen interactive UI: transcript, input, status line, a session rail (other sessions for the repository, with attention badges for sessions waiting for input), and a toggleable changes pane with the task's diff summary. Panels read the task store and worktree through injectable providers; no pty layer. |
+| `everrun_harness/terminal.py` | The full-screen interactive UI: transcript, input, status line, a session rail (other sessions for the repository, with attention badges for sessions waiting for input), a toggleable changes pane with the task's diff summary, and tool-call output collapsed behind an F4 toggle with a hidden-line count placeholder. Panels read the task store and worktree through injectable providers; no pty layer. |
 
 ## Task lifecycle
 

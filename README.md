@@ -132,6 +132,8 @@ On first use, Everrun selects the only connected provider automatically. If seve
 
 In a wide terminal (100+ columns) the UI shows a session rail on the left listing every session for the repository: `●` running, `!` waiting for your input, `❚` paused, `✓` ready for review, with the current session marked by `▸`. Sessions waiting for input are also counted in the header. Press F2 to toggle the rail, and F3 to open a changes pane on the right with the task's live diff summary; both need a session to be bound and hide automatically on narrow terminals. `/switch <id>` pauses the current session and opens another paused one without leaving the full-screen UI.
 
+Tool activity stays out of the way so the transcript reads like a chat: tool calls and their output collapse into a dim `[N tool lines hidden]` placeholder, and F4 toggles the full detail on and off at any point, including for output printed while it was hidden.
+
 For one-shot or automated tasks, start directly:
 
 ```sh

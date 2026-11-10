@@ -168,5 +168,77 @@ class TerminalTests(unittest.TestCase):
         self.assertTrue(transcript_x and transcript_x[0] >= 26)
 
 
+    def test_tool_output_hidden_by_default_with_placeholder(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.lines = ["Everrun> on it"]
+        ui._tool_lines = [False]
+        ui.write("\n[tool run_command running]\n")
+        ui.write("building project\n")
+        ui.write("done in 2s\n")
+        ui.write("\n[tool run_command complete] done in 2s\n")
+        ui.write("Everrun> build passed\n")
+
+        ui._draw()
+
+        rendered = "\n".join(text for _, _, text in ui.screen.calls)
+        self.assertIn("Everrun> on it", rendered)
+        self.assertIn("Everrun> build passed", rendered)
+        self.assertNotIn("building project", rendered)
+        self.assertNotIn("[tool run_command running]", rendered)
+        self.assertIn("tool lines hidden · F4 to show", rendered)
+
+    def test_f4_toggle_reveals_tool_output(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.write("\n[tool read_file]\nfile contents here\n")
+
+        ui._draw()
+        hidden = "\n".join(text for _, _, text in ui.screen.calls)
+        self.assertNotIn("file contents here", hidden)
+
+        ui.screen.calls.clear()
+        ui.show_tool_calls = True
+        ui._draw()
+        shown = "\n".join(text for _, _, text in ui.screen.calls)
+        self.assertIn("[tool read_file]", shown)
+        self.assertIn("file contents here", shown)
+        self.assertNotIn("hidden · F4", shown)
+
+    def test_f4_toggles_tool_calls_from_the_prompt(self):
+        keys = iter([curses.KEY_F4, "\x03"])
+
+        class KeyScreen:
+            def get_wch(self):
+                return next(keys)
+
+        ui = TerminalUI("Everrun")
+        ui.screen = KeyScreen()
+        self.assertFalse(ui.show_tool_calls)
+        with patch.object(ui, "_draw"), patch.object(ui, "_record_input"):
+            value = ui.input("You> ")
+
+        self.assertEqual(value, "/exit")
+        self.assertTrue(ui.show_tool_calls)
+
+    def test_regular_lines_still_render_around_hidden_tool_output(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.lines = ["Everrun> first"]
+        ui._tool_lines = [False]
+        ui.write("\n[tool run_command]\noutput\n")
+        ui.write("Everrun> second\n")
+
+        ui._draw()
+
+        rendered = "\n".join(text for _, _, text in ui.screen.calls)
+        self.assertIn("Everrun> first", rendered)
+        self.assertIn("Everrun> second", rendered)
+        self.assertNotIn("output", rendered)
+
+
 if __name__ == "__main__":
     unittest.main()

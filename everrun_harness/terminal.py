@@ -35,6 +35,12 @@ class TerminalUI:
         self.status = "Ready"
         self.screen: Any = None
         self.lines = ["Everrun is ready. Type /help for commands.", ""]
+        # Parallel to self.lines: True for lines that belong to a tool block
+        # (the [tool ...] markers plus any streamed tool output between them).
+        self._tool_lines = [False, False]
+        # Tool activity hides behind F4 so the transcript reads like a chat.
+        self.show_tool_calls = False
+        self._in_tool_stream = False
         self.buffer = ""
         self.prompt = "You> "
         self.cursor_pos = 0
@@ -93,8 +99,9 @@ class TerminalUI:
 
     def write(self, value: str) -> int:
         clean = _ANSI.sub("", value).replace("\r", "")
+        tool = self._classify_tool_write(clean)
         old_line_count = len(self.lines)
-        self._append_text(clean)
+        self._append_text(clean, tool=tool)
         added_lines = max(0, len(self.lines) - old_line_count)
         if self.scroll:
             self.scroll = min(len(self.lines) - 1, self.scroll + added_lines)
@@ -327,37 +334,58 @@ class TerminalUI:
             elif key == curses.KEY_F3:
                 self.show_changes = not self.show_changes
                 self._dirty = True
+            elif key == curses.KEY_F4:
+                self.show_tool_calls = not self.show_tool_calls
+                self._dirty = True
             elif isinstance(key, str) and key.isprintable():
                 self.buffer = self.buffer[:self.cursor_pos] + key + self.buffer[self.cursor_pos:]
                 self.cursor_pos += len(key)
                 history_position = None
 
+    def _classify_tool_write(self, clean: str) -> bool:
+        # The runner prints each tool marker as one write, and streamed tool
+        # output as chunks between the "running" and "complete" markers.
+        first = next((line for line in clean.split("\n") if line.strip()), "")
+        if first.startswith("[tool "):
+            self._in_tool_stream = first.endswith(" running]")
+            return True
+        return self._in_tool_stream
+
     def _record_input(self, value: str) -> None:
         parts = value.split("\n")
         self.lines.append("")
+        self._tool_lines.append(False)
         self._append_text(f"{self.prompt}{parts[0]}\n")
         for part in parts[1:]:
             self._append_text(f"  {part}\n")
         self._append_text("\n")
 
-    def _append_text(self, value: str) -> None:
+    def _append_line(self, tool: bool = False) -> None:
+        self.lines.append("")
+        if len(self._tool_lines) < len(self.lines):
+            self._tool_lines.append(tool)
+
+    def _append_text(self, value: str, tool: bool = False) -> None:
         parts = value.split("\n")
         for index, segment in enumerate(parts):
             line_width = self._transcript_width()
             while segment:
                 available = line_width - len(self.lines[-1])
                 if available <= 0:
-                    self.lines.append("")
+                    self._append_line(tool)
                     available = line_width
+                if not self.lines[-1] and self._tool_lines:
+                    self._tool_lines[-1] = tool
                 self.lines[-1] += segment[:available]
                 segment = segment[available:]
                 if segment:
-                    self.lines.append("")
+                    self._append_line(tool)
             if index < len(parts) - 1:
-                self.lines.append("")
+                self._append_line(tool)
         if len(self.lines) > _MAX_TRANSCRIPT_LINES:
             removed = len(self.lines) - _MAX_TRANSCRIPT_LINES
             del self.lines[:removed]
+            del self._tool_lines[:removed]
             self.scroll = min(self.scroll, len(self.lines) - 1)
 
     def _move_vertical(self, direction: int) -> None:
@@ -440,7 +468,21 @@ class TerminalUI:
         if changes_width:
             self._draw_changes(screen, height, width, changes_width)
         wrapped: list[tuple[str, int]] = []
-        for line in self.lines:
+        hidden_tool_lines = 0
+
+        def flush_hidden() -> None:
+            nonlocal hidden_tool_lines
+            if hidden_tool_lines:
+                noun = "line" if hidden_tool_lines == 1 else "lines"
+                wrapped.append((f"[{hidden_tool_lines} tool {noun} hidden · F4 to show]", curses.A_DIM))
+                hidden_tool_lines = 0
+
+        for index, line in enumerate(self.lines):
+            is_tool = bool(line) and index < len(self._tool_lines) and self._tool_lines[index]
+            if is_tool and not self.show_tool_calls:
+                hidden_tool_lines += 1
+                continue
+            flush_hidden()
             expanded = line.expandtabs(2)
             pieces = textwrap.wrap(expanded, width=max(1, text_width - 2), replace_whitespace=False,
                                    drop_whitespace=False, break_long_words=True, break_on_hyphens=False)
@@ -449,13 +491,15 @@ class TerminalUI:
                 style = curses.A_BOLD | (curses.color_pair(2) if self._colors else 0)
             elif line.startswith("Everrun>"):
                 style = curses.A_BOLD | (curses.color_pair(1) if self._colors else 0)
-            elif line.startswith("[tool"):
+            elif is_tool or line.startswith("[tool"):
                 style = curses.A_BOLD | (curses.color_pair(3) if self._colors else 0)
             elif line.startswith("everrun:"):
                 style = curses.A_BOLD | (curses.color_pair(4) if self._colors else 0)
             wrapped.extend((piece, style) for piece in pieces)
             if not pieces:
                 wrapped.append(("", style))
+        flush_hidden()
+        self.scroll = max(0, min(self.scroll, max(0, len(wrapped) - 1)))
         visible = wrapped[-(body_height + self.scroll):-self.scroll if self.scroll else None]
         start = max(1, body_height - len(visible) + 1)
         for index, (line, style) in enumerate(visible[-body_height:]):
@@ -464,7 +508,7 @@ class TerminalUI:
                 screen.addnstr(row, text_x, line, text_width - 1, style)
         screen.hline(height - input_rows - 2, 0, _acs("ACS_HLINE", "-"), width - 1)
         screen.addnstr(height - input_rows - 1, 0,
-                       "Enter: send   Ctrl+O: new line   ↑/↓: move/history   F2: sessions   F3: changes   Ctrl+C or /exit: pause   /help: commands",
+                       "Enter: send   Ctrl+O: new line   ↑/↓: move/history   F2: sessions   F3: changes   F4: tools   Ctrl+C or /exit: pause   /help: commands",
                        width - 1, curses.A_DIM)
         logical_lines = self.buffer.split("\n")
         cursor_prefix = self.buffer[:self.cursor_pos]
