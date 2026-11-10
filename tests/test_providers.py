@@ -58,9 +58,9 @@ class ProviderTests(unittest.TestCase):
             "id": "resp-empty", "status": "completed", "output": [], "usage": {"input_tokens": 3},
         }}]
         with patch.object(providers, "_credential", return_value="test-key"), \
-                patch.object(providers.urllib.request, "urlopen", return_value=FakeResponse(events)):
-            with self.assertRaises(providers.EmptyModelResponse) as raised:
-                providers._openai_responses_complete("test-model", [], [], "system", stream_output=False)
+                patch.object(providers.urllib.request, "urlopen", return_value=FakeResponse(events)), \
+                self.assertRaises(providers.EmptyModelResponse) as raised:
+            providers._openai_responses_complete("test-model", [], [], "system", stream_output=False)
 
         self.assertEqual(raised.exception.response_id, "resp-empty")
         self.assertIn("Status: completed", str(raised.exception))
@@ -90,10 +90,9 @@ class ProviderTests(unittest.TestCase):
             with patch.object(providers, "_base_url", return_value="https://provider.invalid/v1"), \
                     patch.object(providers, "_credential", return_value="test-key"), \
                     patch.object(providers.urllib.request, "urlopen",
-                                 return_value=FakeResponse([error_event])):
-                with self.assertRaisesRegex(RuntimeError, "invalid model"):
-                    providers.complete("openai-compatible", "test-model", [], [], "system",
-                                       stream_output=False)
+                                 return_value=FakeResponse([error_event])), \
+                    self.assertRaisesRegex(RuntimeError, "invalid model"):
+                providers.complete("openai-compatible", "test-model", [], [], "system", stream_output=False)
 
     def test_anthropic_streams_text_tool_calls_and_usage(self):
         request_body: dict = {}

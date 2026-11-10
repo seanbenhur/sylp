@@ -9,7 +9,6 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-
 PROVIDERS = ("openai", "anthropic", "gemini", "antigravity", "openrouter", "openai-compatible")
 ENV_KEYS = {
     "openai": "OPENAI_API_KEY",
@@ -545,15 +544,7 @@ def _openai_responses_complete(model: str, history: list[dict[str, Any]], tools:
                 if data == "[DONE]":
                     continue
                 event = json.loads(data)
-                if event.get("type") == "response.output_text.delta":
-                    delta = event.get("delta", "")
-                    if delta:
-                        text_deltas.append(str(delta))
-                        if stream_output:
-                            sys.stdout.write(str(delta))
-                            sys.stdout.flush()
-                            streamed_text = True
-                elif event.get("type") == "response.refusal.delta":
+                if event.get("type") in {"response.output_text.delta", "response.refusal.delta"}:
                     delta = event.get("delta", "")
                     if delta:
                         text_deltas.append(str(delta))
@@ -564,11 +555,7 @@ def _openai_responses_complete(model: str, history: list[dict[str, Any]], tools:
                 elif event.get("type") == "response.output_text.done":
                     key = (int(event.get("output_index", 0)), int(event.get("content_index", 0)))
                     finalized_text[key] = str(event.get("text") or "")
-                elif event.get("type") == "response.output_item.added":
-                    item = event.get("item")
-                    if isinstance(item, dict):
-                        streamed_items[int(event.get("output_index", len(streamed_items)))] = item
-                elif event.get("type") == "response.output_item.done":
+                elif event.get("type") in {"response.output_item.added", "response.output_item.done"}:
                     item = event.get("item")
                     if isinstance(item, dict):
                         streamed_items[int(event.get("output_index", len(streamed_items)))] = item
@@ -710,9 +697,8 @@ def complete(provider: str, model: str, messages: list[dict[str, Any]], tools: l
     headers = {"Authorization": f"Bearer {key}", "content-type": "application/json"}
     if not key:
         headers.pop("Authorization")
-    if provider in ("gemini", "antigravity"):
-        if not key.startswith("ya29."):
-            headers["x-goog-api-key"] = key
+    if provider in ("gemini", "antigravity") and not key.startswith("ya29."):
+        headers["x-goog-api-key"] = key
     if provider == "openrouter":
         headers["HTTP-Referer"] = "https://github.com/seanbenhur/everrun"
         headers["X-Title"] = "Everrun"

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import codecs
-import json
 import os
 import re
 import selectors
@@ -10,7 +9,6 @@ import subprocess
 import time
 from pathlib import Path
 from typing import Any
-
 
 TOOL_SCHEMAS = [
     {"name": "list_files", "description": "List repository files under a relative path.", "parameters": {"type": "object", "properties": {"path": {"type": "string", "description": "Relative directory; defaults to the repository root."}}, "required": []}},

@@ -9,7 +9,6 @@ from pathlib import Path
 
 from benchmarks.score import _read_records, render_markdown, summarize
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BENCHMARKS = ROOT / "benchmarks"
 

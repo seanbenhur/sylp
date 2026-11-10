@@ -6,16 +6,15 @@ import json
 import os
 import secrets
 import time
-import uuid
 import urllib.parse
 import urllib.request
+import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
 
 from .providers import config_home, load_auth, save_auth
-
 
 AUTH_URL = "https://auth.openai.com/api/accounts/authorize"
 TOKEN_URL = "https://auth.openai.com/api/accounts/oauth/token"
@@ -267,7 +266,7 @@ def login_antigravity() -> None:
                 save_auth(auth)
                 print(f"Connected Antigravity account{': ' + email if email else ''} from existing IDE session.")
                 return
-        except Exception as exc:
+        except Exception:
             pass
 
     state = secrets.token_urlsafe(32)

@@ -9,7 +9,6 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-
 _ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _MAX_TRANSCRIPT_LINES = 1500
 

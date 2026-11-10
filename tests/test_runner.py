@@ -51,9 +51,9 @@ class RunnerIntegrationTests(unittest.TestCase):
                     while not ready.exists() and worker.poll() is None and time.monotonic() < deadline:
                         time.sleep(0.02)
                     self.assertTrue(ready.exists(), worker.stderr.read() if worker.poll() is not None else "")
-                    with self.assertRaisesRegex(RuntimeError, "already open in another Everrun process"):
-                        with runner._task_lock("lock-test"):
-                            pass
+                    with self.assertRaisesRegex(RuntimeError, "already open in another Everrun process"), \
+                            runner._task_lock("lock-test"):
+                        pass
                     release.write_text("release", encoding="utf-8")
                     stdout, stderr = worker.communicate(timeout=10)
                     self.assertEqual(worker.returncode, 0, stderr or stdout)

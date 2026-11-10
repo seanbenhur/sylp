@@ -12,7 +12,6 @@ from .providers import EmptyModelResponse, complete, list_models, save_default_m
 from .store import Store
 from .tools import TOOL_SCHEMAS, execute_tool
 
-
 MAX_TURNS_PER_INVOCATION = 200
 HISTORY_CHAR_LIMIT = 50000
 StatusCallback = Callable[[str], None] | None
@@ -152,11 +151,12 @@ def _tool_outputs(task_id: str, task: dict[str, Any], calls: list[dict[str, Any]
         output_buffer = ""
         output_checkpointed = 0
         last_output_checkpoint = time.monotonic()
+        call_id = call.get("id")
 
         def flush_output() -> None:
             nonlocal output_buffer, output_checkpointed, last_output_checkpoint
             if output_buffer:
-                store.event(task_id, "tool_output", {"call_id": call.get("id"), "chunk": output_buffer})
+                store.event(task_id, "tool_output", {"call_id": call_id, "chunk": output_buffer})
                 output_checkpointed += len(output_buffer)
                 output_buffer = ""
                 last_output_checkpoint = time.monotonic()
@@ -530,7 +530,8 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
         _save_assistant(task_id, provider, result, store)
         calls = result.get("tool_calls", [])
         try:
-            outputs = _tool_outputs(task_id, task, calls, provider, store, on_status) if calls else []
+            if calls:
+                _tool_outputs(task_id, task, calls, provider, store, on_status)
         except KeyboardInterrupt:
             _set_status(on_status, "Paused")
             store.update(task_id, status="paused")

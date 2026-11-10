@@ -5,7 +5,6 @@ import os
 import time
 from pathlib import Path
 
-
 root = Path(__file__).resolve().parent
 build = root / "build"
 build.mkdir(exist_ok=True)

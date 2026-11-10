@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from everrun_harness.terminal import TerminalUI, _MAX_TRANSCRIPT_LINES
+from everrun_harness.terminal import _MAX_TRANSCRIPT_LINES, TerminalUI
 
 
 class TerminalTests(unittest.TestCase):
@@ -23,9 +23,9 @@ class TerminalTests(unittest.TestCase):
             print("Session output")
             received.append(input("You> "))
 
-        with patch("everrun_harness.terminal.curses.wrapper", side_effect=lambda _run, fn: fn()):
-            with patch.object(ui, "input", return_value="hello") as ui_input:
-                ui.run(callback)
+        with patch("everrun_harness.terminal.curses.wrapper", side_effect=lambda _run, fn: fn()), \
+                patch.object(ui, "input", return_value="hello") as ui_input:
+            ui.run(callback)
 
         self.assertEqual(received, ["hello"])
         ui_input.assert_called_once_with("You> ")

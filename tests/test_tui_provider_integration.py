@@ -13,7 +13,6 @@ from pathlib import Path
 
 from everrun_harness.store import Store
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 

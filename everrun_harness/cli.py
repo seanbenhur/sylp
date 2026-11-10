@@ -12,7 +12,18 @@ from pathlib import Path
 from . import __version__
 from .auth import login_antigravity, login_openai
 from .git import prepare_worktree
-from .providers import PROVIDERS, configure_provider, default_model, default_provider, is_connected, list_models, load_auth, remove_key, save_default_model, save_default_provider
+from .providers import (
+    PROVIDERS,
+    configure_provider,
+    default_model,
+    default_provider,
+    is_connected,
+    list_models,
+    load_auth,
+    remove_key,
+    save_default_model,
+    save_default_provider,
+)
 from .runner import run_task, task_home
 from .store import Store
 from .terminal import TerminalUI
