@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from . import memory
 from .extensions import ExtensionSet
 from .git import common_dir, diff_summary, refresh_clean_worktree
 from .providers import EmptyModelResponse, complete, list_models, save_default_model
@@ -78,10 +79,12 @@ def _task_lock(task_id: str):
         handle.close()
 
 
-def _system_prompt(task: dict[str, Any], *, interactive: bool = False, extra_tools: bool = False) -> str:
+def _system_prompt(task: dict[str, Any], *, interactive: bool = False, extra_tools: bool = False,
+                   memory_block: str = "") -> str:
     criteria = "\n".join(f"- {item}" for item in task["acceptance"]) or "- No explicit acceptance criteria supplied"
     extensions_line = ("Tools whose names start with mcp__ come from configured MCP servers; "
                        "other extra tools come from local Everrun plugins.\n\n") if extra_tools else ""
+    memory_section = f"{memory_block}\n\n" if memory_block else ""
     if interactive:
         ending = "This is an ongoing interactive coding session. Respond naturally to the user's latest message. Continue using tools when useful. Do not emit EVERUN_STATUS markers; after your response, Everrun will wait for the user's next message."
     else:
@@ -90,7 +93,7 @@ def _system_prompt(task: dict[str, Any], *, interactive: bool = False, extra_too
 
 Work incrementally. Inspect before editing. Use apply_patch for focused changes, and git_status/git_diff to review the worktree. Keep changes focused and reviewable. Run relevant checks with run_command; it will ask the user for approval unless auto-approval was enabled. Never claim checks passed unless you observed their output.
 
-{extensions_line}{ending}
+{extensions_line}{memory_section}{ending}
 
 Task goal:
 {task['goal']}
@@ -136,6 +139,15 @@ def _write_report(task: dict[str, Any], task_id: str, summary: str, transcript: 
         "Agent-reported verification is not independently validated by Everrun. Review the diff and rerun checks before merging.\n",
         encoding="utf-8",
     )
+    # Distill durable facts from the finished task. Best-effort: never blocks the report.
+    try:
+        memory.extract_memories(
+            store, task, str(task.get("provider") or "openai"),
+            f"Task goal:\n{task['goal']}\n\nFinal summary:\n{summary}\n\nTranscript excerpt:\n{transcript}",
+            source="completion", complete_fn=complete)
+    except Exception as exc:
+        store.event(task_id, "memory_extraction_failed",
+                    {"source": "completion", "error": str(exc)[:500]})
     return path
 
 
@@ -294,6 +306,18 @@ def _recover_interrupted_tools(task_id: str, provider: str, history: list[dict[s
     return store.messages(task_id) if unfinished else history
 
 
+def _memory_query(task: dict[str, Any], history: list[dict[str, Any]]) -> str:
+    """Retrieval query: the task goal plus the latest user message."""
+    parts = [str(task["goal"])]
+    for message in reversed(history):
+        if message.get("role") == "user" and isinstance(message.get("content"), str):
+            text = message["content"].strip()
+            if text and not text.startswith("Persistent Everrun task checkpoint"):
+                parts.append(text)
+                break
+    return "\n".join(parts)[:2000]
+
+
 def _decode_arguments(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
@@ -442,6 +466,14 @@ def _compact_history(task_id: str, task: dict[str, Any], provider: str, history:
     checkpoint = {"role": "user", "content": "Persistent Everrun task checkpoint. Continue from this state and inspect the worktree before editing:\n\n" + summary}
     store.add_message(task_id, provider, checkpoint, checkpoint=True)
     store.event(task_id, "context_compacted", {"previous_chars": size, "checkpoint_chars": len(summary)})
+    # Distill durable facts out of the pre-compaction history. Best-effort: a
+    # failed extraction never blocks compaction.
+    try:
+        memory.extract_memories(store, task, provider, memory.transcript_excerpt(history),
+                                source="compaction", complete_fn=complete)
+    except Exception as exc:
+        store.event(task_id, "memory_extraction_failed",
+                    {"source": "compaction", "error": str(exc)[:500]})
     return store.messages(task_id)
 
 
@@ -516,6 +548,12 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
         print("Updated the untouched task worktree with the current checkout changes.", flush=True)
 
     history = _recover_interrupted_tools(task_id, provider, store.messages(task_id), store)
+    # Recall durable memories once per invocation; the block rides along in the
+    # system prompt for every turn of this run.
+    memory_block = memory.recall_block(store, task["repo"], _memory_query(task, history))
+    if memory_block:
+        store.event(task_id, "memories_recalled",
+                    {"count": memory_block.count("\n- ["), "chars": len(memory_block)})
     continuing_session = interactive and _session_is_waiting_for_user(history)
     if not history:
         first = {"role": "user", "content": "Start this task. Inspect the repository and make progress toward the goal.\n\n" + task["goal"]}
@@ -567,7 +605,8 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
                     print("Everrun> ", end="", flush=True)
                     result = complete(provider, task["model"], history, tool_schemas,
                                       _system_prompt(task, interactive=interactive,
-                                                     extra_tools=bool(extension_schemas)))
+                                                     extra_tools=bool(extension_schemas),
+                                                     memory_block=memory_block))
                     if not str(result.get("text") or "").strip() and not result.get("tool_calls"):
                         raise EmptyModelResponse(
                             f"{provider} returned no user-visible text or tool calls.",

@@ -15,7 +15,8 @@ Everrun is a standalone, local-first coding harness. It talks to model providers
 | `everrun_harness/mcp.py` | Stdlib-only MCP client: stdio JSON-RPC handshake, tool listing, and tool calls to configured MCP servers. |
 | `everrun_harness/plugins.py` | Discovery, validation, and dispatch for local Python plugins that add model tools. |
 | `everrun_harness/extensions.py` | Combines MCP servers and plugins into one tool registry per task run. |
-| `everrun_harness/store.py` | SQLite persistence for tasks, events, and conversation messages. WAL mode, owner-only file permissions. |
+| `everrun_harness/store.py` | SQLite persistence for tasks, events, conversation messages, and durable memories. WAL mode, owner-only file permissions. |
+| `everrun_harness/memory.py` | Cross-session memory: extraction of durable facts at compaction and completion (session provider, or an optional local OpenAI-compatible extractor with provider fallback), and hybrid recall injected into the system prompt - FTS5 (LIKE fallback) fused via reciprocal rank fusion with local embeddings (sqlite-vec index when installed, Python scan otherwise). |
 | `everrun_harness/git.py` | Worktree and branch preparation for each task. |
 | `everrun_harness/terminal.py` | The full-screen interactive UI: chat transcript with `❯`/`•` message markers and inline markdown (`**bold**`, `` `code` ``, headings, fenced code blocks), a framed composer (separators, `❯` prompt, key hints, dim status row), an animated busy spinner with elapsed timer in the header (ticker thread serialized by a draw lock), a session rail (attention badges for sessions waiting for input), a toggleable changes pane with the task's diff summary, and tool-call output collapsed behind an F4 toggle with a hidden-line count placeholder. Rendering is span-based with a wrapped-row cache; panels read the task store and worktree through injectable providers; no pty layer. |
 
@@ -36,6 +37,10 @@ Each turn, the runner:
 - continues until a turn produces no tool calls.
 
 Empty model responses (no text and no tool calls) are captured with provider diagnostics, retried once, and then pause the session instead of looping silently. A turn that ends with `finish_reason` of `length`/`max_tokens` gets an automatic "continue" nudge.
+
+## Memory
+
+Compaction and task completion each trigger a best-effort extraction pass that distills durable facts into the `memories` table (scoped to the repository or the user, deduplicated on normalized exact match). At task start and resume, the goal plus the latest user message query the table - FTS5 keyword search, optionally fused with vector similarity from a local embeddings endpoint - and the top matches join the system prompt labeled as model-extracted hints to verify before relying on. Every failure mode (FTS5 missing, embedding or extractor endpoint down, malformed extraction JSON) degrades to the next simpler path and is recorded as an event rather than blocking the task.
 
 ## Interruption recovery
 

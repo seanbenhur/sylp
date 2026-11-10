@@ -152,6 +152,11 @@ def _main(*, ui: TerminalUI | None = None) -> None:
     plugins_cmd.add_argument("--repo", default=".", help="Repository whose .everrun/plugins/ applies (default: current directory)")
     sandbox_cmd = sub.add_parser("sandbox", help="Show the shell sandbox status")
     sandbox_cmd.add_argument("--test", action="store_true", help="Also run a probe command through the sandbox")
+    memory_cmd = sub.add_parser("memory", help="List, search, or forget durable memories")
+    memory_cmd.add_argument("--repo", default=".", help="Repository whose memories apply (default: current directory)")
+    memory_cmd.add_argument("--all", action="store_true", help="Include memories from every repository")
+    memory_cmd.add_argument("--search", help="Search memories with the retrieval pipeline")
+    memory_cmd.add_argument("--forget", type=int, metavar="ID", help="Delete one memory")
     args = parser.parse_args()
     if args.command is None:
         try:
@@ -400,6 +405,33 @@ def _main(*, ui: TerminalUI | None = None) -> None:
                 print(f"error: {error}", file=sys.stderr)
             if registry.errors:
                 raise SystemExit(1)
+        elif args.command == "memory":
+            from . import memory as memory_module
+            if args.forget is not None:
+                if store.delete_memory(args.forget):
+                    print(f"Forgot memory {args.forget}.")
+                else:
+                    raise RuntimeError(f"No memory {args.forget}")
+            elif args.all:
+                for item in store.list_memories(include_all=True):
+                    scope = "user" if item["repo"] is None else Path(item["repo"]).name
+                    print(f"{item['id']}\t[{item['kind']}]\t{scope}\t{item['content']}")
+            else:
+                repo = str(_git_root(Path(args.repo).resolve()))
+                if args.search:
+                    hits = memory_module.recall(store, repo, args.search)
+                    if not hits:
+                        print("No matching memories.")
+                    for item in hits:
+                        scope = "user" if item["repo"] is None else Path(item["repo"]).name
+                        print(f"{item['id']}\t[{item['kind']}]\t{scope}\t{item['content']}")
+                else:
+                    items = store.list_memories(repo)
+                    if not items:
+                        print("No memories saved for this repository yet.")
+                    for item in items:
+                        scope = "user" if item["repo"] is None else Path(item["repo"]).name
+                        print(f"{item['id']}\t[{item['kind']}]\t{scope}\t{item['content']}")
         elif args.command == "sandbox":
             from .sandbox import describe, policy_from_env, wrap_command
             policy = policy_from_env()

@@ -6,7 +6,7 @@ Everrun keeps all of its state under one directory and is otherwise configured t
 
 | Path | Contents |
 | --- | --- |
-| `~/.everrun/state.sqlite3` | Task records, event log, conversation messages, compaction checkpoints. |
+| `~/.everrun/state.sqlite3` | Task records, event log, conversation messages, compaction checkpoints, durable memories. |
 | `~/.everrun/auth.json` | Saved provider credentials and remembered provider/model defaults. |
 | `~/.everrun/tasks/<task-id>/` | Final review reports. |
 | `~/.everrun/mcp.json` | MCP server configuration (also `<repo>/.everrun/mcp.json`). |
@@ -29,6 +29,13 @@ The state directory and credential file are created with owner-only permissions 
 | `EVERUN_SANDBOX` | Shell sandbox mode: `off`, `auto` (default), or `require`. See [Extensions](extensions.md). |
 | `EVERUN_SANDBOX_NETWORK` | `off` cuts network access inside sandboxed commands (default `on`). |
 | `EVERUN_MCP_CONFIG` | Read MCP server configuration from this file instead of the default locations. |
+| `EVERUN_MEMORY` | `0` disables cross-session memory extraction and recall (default on). |
+| `EVERUN_EMBED_URL`, `EVERUN_EMBED_MODEL`, `EVERUN_EMBED_KEY` | Optional local OpenAI-compatible embeddings endpoint for hybrid (keyword + vector) memory retrieval, e.g. Ollama. Unset or unreachable means FTS5 keyword search only. |
+| `EVERUN_MEMORY_EXTRACT_URL`, `EVERUN_MEMORY_EXTRACT_MODEL`, `EVERUN_MEMORY_EXTRACT_KEY` | Optional local OpenAI-compatible chat endpoint that runs the memory extraction pass instead of the session provider. Falls back to the session provider on failure. |
+
+## Memory
+
+Everrun distills durable facts (repository conventions, user preferences, decisions, failure causes) into the `memories` table at compaction and task completion, and injects relevant ones into later sessions' system prompts with a verify-before-use caveat. Search is SQLite FTS5 with a `LIKE` fallback; the optional embedding endpoint above adds vector similarity fused with keyword ranking (sqlite-vec index when installed, Python scan otherwise). Inspect with `everrun memory`, remove entries with `everrun memory --forget <id>`, or disable the feature with `EVERUN_MEMORY=0`.
 
 ## Safety
 

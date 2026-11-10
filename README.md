@@ -9,6 +9,7 @@ Everrun opens an interactive coding session in your repository. It runs its own 
 - **Owns the coding loop.** Everrun sends context to the selected model, dispatches its tool calls, collects results, and continues until the task is complete or needs your input.
 - **Surfaces empty model turns.** A completed response with no text or tool calls is recorded with provider diagnostics and retried once before the session pauses.
 - **Keeps long tasks resumable.** Task state, messages, tool results, and compacted context checkpoints are stored in SQLite.
+- **Remembers across sessions.** At compaction and task completion, Everrun distills durable facts (repository conventions, your preferences, decisions, failure causes) into a local memories table and injects the relevant ones into later sessions. See [Memory](#memory).
 - **Prevents duplicate workers.** Everrun locks each session while it is active, including its interactive prompt and tool execution.
 - **Recovers interrupted tool turns.** Everrun checkpoints streamed shell output. If a process stops during a tool call, resume includes the recorded result or captured partial output and tells the model to inspect state before considering the action again.
 - **Keeps task edits separate.** Every task gets its own Git branch and worktree.
@@ -18,6 +19,33 @@ Everrun opens an interactive coding session in your repository. It runs its own 
 - **Speaks MCP.** Stdio Model Context Protocol servers configured in `mcp.json` add their tools to the model loop as `mcp__<server>__<tool>`.
 - **Loads local plugins.** Drop a Python file in `~/.everrun/plugins/` or `<repo>/.everrun/plugins/` to add your own tools.
 - **Hands back reviewable work.** A completed task includes a report with its goal, criteria, agent summary, diff summary, and provider-reported token usage when available. Everrun does not infer billed cost or merge changes for you.
+
+## Memory
+
+Everrun keeps a small, local, inspectable memory across sessions in the same SQLite database (`memories` table, no external service). Two things happen automatically:
+
+- **Extraction.** When the conversation is compacted and when a task completes, the model distills durable facts - repository conventions, user preferences, decisions and their reasons, root causes of failures - into memories scoped to the repository or to you. Ephemeral task state is skipped on purpose, and repeated facts are deduplicated.
+- **Recall.** At task start and resume, the goal and your latest message are searched against saved memories with SQLite FTS5 full-text search (a `LIKE` fallback covers SQLite builds without FTS5), and the top matches are injected into the system prompt with an explicit hint that they are model-extracted and must be verified before use.
+
+Inspect and prune memory any time:
+
+```sh
+everrun memory                 # memories for this repository (plus user-scope ones)
+everrun memory --all           # everything
+everrun memory --search "test command"
+everrun memory --forget 12     # delete one memory
+```
+
+Set `EVERUN_MEMORY=0` to disable extraction and recall entirely.
+
+### Optional local-model memory (phase 2)
+
+Memory works out of the box with the session provider for extraction and FTS5 for search. Two optional upgrades keep everything local, both off unless configured:
+
+- **Hybrid retrieval.** Point `EVERUN_EMBED_URL` and `EVERUN_EMBED_MODEL` at a local OpenAI-compatible embeddings endpoint (for example Ollama with `nomic-embed-text`). Memory text is embedded as it is saved, and recall fuses keyword and vector ranking with reciprocal rank fusion. Vectors are indexed with [`sqlite-vec`](https://github.com/asg017/sqlite-vec) when that package is installed and scanned in Python otherwise. If the embedding endpoint is unreachable, recall silently falls back to FTS5 only.
+- **Local extraction.** Point `EVERUN_MEMORY_EXTRACT_URL` and `EVERUN_MEMORY_EXTRACT_MODEL` at a local OpenAI-compatible chat endpoint (for example Ollama with a small instruct model) to run the extraction pass locally instead of through the session provider. If the local endpoint fails, extraction falls back to the session provider, and if that fails the pass is skipped and recorded as an event - memory never blocks a task.
+
+Honest limits: extraction is model-generated and can be wrong, vague, or stale; deduplication is exact-match after whitespace/case normalization, so paraphrases can accumulate; and retrieval is only as good as the query (your goal plus latest message). Treat recalled memories as leads, not facts, and use `everrun memory --forget` liberally.
 
 ## Workflow
 
