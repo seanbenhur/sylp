@@ -47,7 +47,7 @@ def _interactive() -> argparse.Namespace:
     existing = [item for item in Store().list()
                 if Path(item["repo"]).resolve() == repo
                 and item["status"] in {"paused", "running", "waiting_for_input"}]
-    print("Everrun · coding session")
+    print("Coding session")
     print(f"Repository: {repo}")
     print("Type /exit at the prompt to pause this session.\n")
     if existing:
@@ -214,7 +214,7 @@ def _main(*, ui: TerminalUI | None = None) -> None:
                 store.event(task_id, "created", {"goal": args.goal, "acceptance": args.accept,
                                                    "base_commit": base, "provider": args.provider,
                                                    "model": args.model, "interactive": True})
-                print(f"Everrun session {task_id} · {args.provider}/{args.model}")
+                print(f"Session {task_id} · {args.provider}/{args.model}")
                 print(f"Working in {worktree}. Use /help for session commands.\n")
                 current_id = task_id
                 while True:
@@ -228,14 +228,14 @@ def _main(*, ui: TerminalUI | None = None) -> None:
                         print(f"Open the session with: everrun resume {switch_to}")
                         break
                     current_id = switch_to
-                    ui.title = f"Everrun · {repo.name} · {next_task['provider']}/{next_task['model']}"
-                    print(f"\nEverrun switched to session {current_id} · {next_task['goal']}\n")
+                    ui.title = f"{repo.name} · {next_task['provider']}/{next_task['model']}"
+                    print(f"\nSwitched to session {current_id} · {next_task['goal']}\n")
 
             if sys.stdin.isatty() and sys.stdout.isatty():
                 if ui is None:
-                    TerminalUI(f"Everrun · {repo.name} · {args.provider}/{args.model}").run(start_session)
+                    TerminalUI(f"{repo.name} · {args.provider}/{args.model}").run(start_session)
                 else:
-                    ui.title = f"Everrun · {repo.name} · {args.provider}/{args.model}"
+                    ui.title = f"{repo.name} · {args.provider}/{args.model}"
                     start_session()
             else:
                 start_session()
@@ -262,14 +262,14 @@ def _main(*, ui: TerminalUI | None = None) -> None:
                         print(f"Open the session with: everrun resume {switch_to}")
                         break
                     current_id = switch_to
-                    ui.title = f"Everrun · {Path(next_task['repo']).name} · {next_task['provider']}/{next_task['model']}"
-                    print(f"\nEverrun switched to session {current_id} · {next_task['goal']}\n")
+                    ui.title = f"{Path(next_task['repo']).name} · {next_task['provider']}/{next_task['model']}"
+                    print(f"\nSwitched to session {current_id} · {next_task['goal']}\n")
 
             if not args.batch and sys.stdin.isatty() and sys.stdout.isatty():
                 if ui is None:
-                    TerminalUI(f"Everrun · {Path(task['repo']).name} · {task['provider']}/{task['model']}").run(resume_session)
+                    TerminalUI(f"{Path(task['repo']).name} · {task['provider']}/{task['model']}").run(resume_session)
                 else:
-                    ui.title = f"Everrun · {Path(task['repo']).name} · {task['provider']}/{task['model']}"
+                    ui.title = f"{Path(task['repo']).name} · {task['provider']}/{task['model']}"
                     resume_session()
             else:
                 resume_session()
@@ -422,14 +422,14 @@ def main() -> None:
     # inside one full-screen application instead of dropping back to the shell
     # between questions and the coding session.
     if len(sys.argv) == 1 and sys.stdin.isatty() and sys.stdout.isatty():
-        ui = TerminalUI("Everrun · coding session")
+        ui = TerminalUI("Coding session")
 
         def launch() -> None:
             try:
                 _main(ui=ui)
             except SystemExit as exc:
                 if exc.code:
-                    ui.write("\nPress Enter to close Everrun. ")
+                    ui.write("\nPress Enter to close. ")
                     ui.input("")
 
         ui.run(launch)
