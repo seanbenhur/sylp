@@ -90,14 +90,15 @@ Claude.ai subscriptions and Anthropic API access are separate products; a Claude
 
 ### Google Antigravity & Gemini
 
-Connect Google Gemini models (e.g. `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash`) or the Google Antigravity SDK:
+Sign in to Google Antigravity in a browser (reusing an existing Antigravity IDE session when one is present), or connect Gemini models with an API key from [Google AI Studio](https://aistudio.google.com/):
 
 ```sh
+everrun auth login antigravity   # browser OAuth sign-in
 everrun auth set gemini          # or: everrun auth set antigravity
-everrun models --provider gemini
+everrun models --provider antigravity
 ```
 
-You can also export `GEMINI_API_KEY`, `ANTIGRAVITY_API_KEY`, or `GOOGLE_API_KEY` in your environment. Everrun can use the `google-antigravity` SDK when installed or communicate with Google's high-speed API directly.
+You can also export `GEMINI_API_KEY`, `ANTIGRAVITY_API_KEY`, or `GOOGLE_API_KEY` in your environment. OAuth sign-ins are routed to Google's Code Assist backend and print each response when the turn completes (no streaming); API-key requests stream from the Gemini Developer API. See [docs/providers.md](docs/providers.md) for the details.
 
 ### OpenRouter or another compatible endpoint
 
@@ -176,3 +177,13 @@ Provider requests allow up to 15 minutes for a response by default. Set `EVERUN_
 The worktree keeps changes isolated from your current checkout, but it is not a security sandbox. Shell commands run on your machine. Review commands before approving them, use repositories you trust, and inspect the report and diff before merging. Everrun records model-reported checks but does not independently validate them.
 
 See the [comparison protocol](benchmarks/PROTOCOL.md) for a reproducible Everrun vs. Codex evaluation. Everrun has not been shown to outperform Codex until that protocol has been run and its results published.
+
+## Documentation
+
+- [Architecture](docs/architecture.md) - module map, task lifecycle, the model loop, and interruption recovery
+- [Providers](docs/providers.md) - sign-in paths, model listing, and per-provider behavior
+- [Configuration](docs/configuration.md) - state layout, environment variables, safety, and development setup
+
+## License
+
+Everrun is licensed under the [Apache License 2.0](LICENSE).
