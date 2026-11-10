@@ -10,8 +10,10 @@ Sylp is a standalone, local-first coding harness. It talks to model providers di
 | `sylp_harness/runner.py` | The task loop: sends history to the model, dispatches tool calls, checkpoints output, handles interrupts, waiting-for-input, and completion. |
 | `sylp_harness/providers.py` | Provider adapters: credentials, model listing, and one `complete()` entry point per provider family (OpenAI Responses API, Anthropic Messages API, OpenAI-compatible chat completions, Antigravity Code Assist). |
 | `sylp_harness/auth.py` | Browser OAuth sign-in for ChatGPT and Google Antigravity, token refresh, and reuse of an existing Antigravity IDE session when present. |
-| `sylp_harness/tools.py` | The tool surface the model can call: file reads/writes, unified-diff patches, search, git status/diff, and shell commands with approval. |
-| `sylp_harness/sandbox.py` | Best-effort confinement of approved shell commands via bubblewrap (Linux) or sandbox-exec (macOS), with a one-time backend probe and honest degradation. |
+| `sylp_harness/tools.py` | The tool surface the model can call: file reads/writes, unified-diff patches, search, git status/diff, and shell commands. Every call is gated by the permission engine before execution. |
+| `sylp_harness/permissions.py` | Deterministic allow/ask/deny engine for every tool call: typed policy rules, protected paths, a conservative shell-command classifier. No model output participates. |
+| `sylp_harness/trust.py` | Content-hash trust bootstrap for repository-supplied plugins and MCP config before they load. |
+| `sylp_harness/sandbox.py` | Best-effort confinement of approved shell commands via bubblewrap (Linux) or sandbox-exec (macOS): one-time backend probe, no unsandboxed fallback without explicit approval, private scratch `/tmp`, network off by default, secret-scrubbed child environment. |
 | `sylp_harness/mcp.py` | Stdlib-only MCP client: stdio JSON-RPC handshake, tool listing, and tool calls to configured MCP servers. |
 | `sylp_harness/plugins.py` | Discovery, validation, and dispatch for local Python plugins that add model tools. |
 | `sylp_harness/extensions.py` | Combines MCP servers and plugins into one tool registry per task run. |
@@ -48,10 +50,10 @@ Shell tool output is checkpointed to the event log as it streams (on a size and 
 
 ## Tool surface
 
-`list_files`, `read_file`, `write_file`, `apply_patch`, `search_files`, `git_status`, `git_diff`, and `run_command`. `run_command` requires interactive approval unless the task was started with `--auto-approve` (or `SYLP_AUTO_APPROVE=1` for interactive sessions). Approvals are per command; there is no persistent allowlist.
+`list_files`, `read_file`, `write_file`, `apply_patch`, `search_files`, `git_status`, `git_diff`, and `run_command`. Every call (built-in, MCP, or plugin) passes `permissions.py` first: read-only tools and ordinary worktree edits are allowed, unknown or compound shell commands ask, extension tools and credential-looking files always ask a person, and `.git`/`.sylp` writes are denied outright. Policy rules live in `~/.sylp/permissions.json` (user) and `<repo>/.sylp/permissions.json` (tighten-only); see docs/permissions.md. `--auto-approve` (or `SYLP_AUTO_APPROVE=1` for interactive sessions) answers routine command asks; approvals are otherwise per action and there is no persistent allowlist yet.
 
 At task start the runner also loads configured MCP servers and local plugins and appends their schemas to the tool list; extension tools are dispatched through the same result-checkpointing path as built-ins. MCP servers are subprocesses terminated when the task pauses or finishes; plugins run in-process. A failed MCP server or plugin is skipped and recorded in an `extensions_loaded` event rather than stopping the task. See [Extensions](extensions.md).
 
 ## Isolation model
 
-Worktrees keep task edits out of your checkout. On top of that, approved shell commands can run sandboxed (bubblewrap or sandbox-exec): writes are limited to the worktree, the repository's Git directory, and `/tmp`, everything else is read-only, and network access can be disabled. This is best-effort confinement rather than a hard security boundary, and plugins are not confined by it. Review commands before approving them, use repositories you trust, and read the report and diff before merging.
+Worktrees keep task edits out of your checkout. On top of that, approved shell commands can run sandboxed (bubblewrap or sandbox-exec): writes are limited to the worktree, the repository's Git directory, and a private per-task scratch directory exposed as `/tmp`, everything else is read-only, network is off by default, and the command's environment is scrubbed of secret-looking variables. When no backend works, Sylp asks before running unsandboxed instead of degrading silently. This is best-effort confinement rather than a hard security boundary, and plugins are not confined by it - which is why repository-supplied plugins and MCP config load only after explicit, content-hashed trust. Review commands before approving them, use repositories you trust, and read the report and diff before merging.

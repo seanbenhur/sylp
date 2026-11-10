@@ -71,6 +71,10 @@ class RunnerExtensionTests(unittest.TestCase):
             server.write_text(FAKE_SERVER, encoding="utf-8")
             (state / "mcp.json").write_text(json.dumps({"servers": {
                 "fake": {"command": sys.executable, "args": [str(server)]}}}), encoding="utf-8")
+            # Extension tools ask by default; the user's policy allows these.
+            (state / "permissions.json").write_text(json.dumps({"rules": [
+                {"tool": "mcp__fake__*", "decision": "allow"},
+                {"tool": "whoami", "decision": "allow"}]}), encoding="utf-8")
 
             with patch.dict(os.environ, {"SYLP_HOME": str(state)}):
                 worktree, base = prepare_worktree(root, "extensions1")

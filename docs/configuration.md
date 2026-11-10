@@ -9,8 +9,11 @@ Sylp keeps all of its state under one directory and is otherwise configured thro
 | `~/.sylp/state.sqlite3` | Task records, event log, conversation messages, compaction checkpoints, durable memories. |
 | `~/.sylp/auth.json` | Saved provider credentials and remembered provider/model defaults. |
 | `~/.sylp/tasks/<task-id>/` | Final review reports. |
-| `~/.sylp/mcp.json` | MCP server configuration (also `<repo>/.sylp/mcp.json`). |
-| `~/.sylp/plugins/` | Local plugin files (also `<repo>/.sylp/plugins/`). |
+| `~/.sylp/mcp.json` | MCP server configuration (also `<repo>/.sylp/mcp.json`, loaded only once trusted). |
+| `~/.sylp/plugins/` | Local plugin files (also `<repo>/.sylp/plugins/`, loaded only once trusted). |
+| `~/.sylp/trusted.json` | Content-hash record of repository extensions you approved. |
+| `~/.sylp/permissions.json` | Your permission policy (also `<repo>/.sylp/permissions.json`, tighten-only). See [Permissions](permissions.md). |
+| `~/.sylp/tasks/<task-id>/scratch/` | Private per-task scratch directory the sandbox exposes as `/tmp`. |
 | `<repo>/.git/sylp-worktrees/<task-id>` | Per-task branches and worktrees, in the repository's common Git directory. |
 
 The state directory and credential file are created with owner-only permissions (`0700` / `0600`). Set `SYLP_HOME` to move the database, credentials, and reports elsewhere. State directories from earlier names (`~/.everrun`, then `~/.relay`) are still read when `~/.sylp` has no database, and existing credentials in `~/.everrun` keep working, so a rename does not strand task history.
@@ -22,12 +25,13 @@ The state directory and credential file are created with owner-only permissions 
 | `SYLP_HOME` | Move Sylp's state directory. |
 | `SYLP_PROVIDER` | Default provider for `run`, `models`, and interactive sessions. |
 | `SYLP_MODEL` | Default model for `sylp run`. |
-| `SYLP_AUTO_APPROVE` | `1` lets interactive sessions run shell commands without per-command approval. Use only in a trusted, disposable environment. |
+| `SYLP_AUTO_APPROVE` | `1` lets sessions run routine shell commands without per-command approval. Sensitive asks (credential files, extension tools, unsandboxed execution) still require a person. Use only in a trusted, disposable environment. |
 | `SYLP_REQUEST_TIMEOUT` | Provider request timeout in seconds, 60-3600 (default 900). |
 | `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `ANTIGRAVITY_API_KEY`, `OPENROUTER_API_KEY` | Provider keys without saving them to `auth.json`. |
 | `SYLP_API_KEY`, `SYLP_BASE_URL` | Key and endpoint for the `openai-compatible` provider. |
 | `SYLP_SANDBOX` | Shell sandbox mode: `off`, `auto` (default), or `require`. See [Extensions](extensions.md). |
-| `SYLP_SANDBOX_NETWORK` | `off` cuts network access inside sandboxed commands (default `on`). |
+| `SYLP_SANDBOX_NETWORK` | `on` allows network access inside sandboxed commands (default `off`). |
+| `SYLP_ENV_ALLOW` | Comma-separated environment variable names that may pass the secret scrubber into model-invoked commands. |
 | `SYLP_MCP_CONFIG` | Read MCP server configuration from this file instead of the default locations. |
 | `SYLP_MEMORY` | `0` disables cross-session memory extraction and recall (default on). |
 | `SYLP_EMBED_URL`, `SYLP_EMBED_MODEL`, `SYLP_EMBED_KEY` | Optional local OpenAI-compatible embeddings endpoint for hybrid (keyword + vector) memory retrieval, e.g. Ollama. Unset or unreachable means FTS5 keyword search only. |
@@ -39,9 +43,11 @@ Sylp distills durable facts (repository conventions, user preferences, decisions
 
 ## Safety
 
-- Worktrees isolate edits; the shell sandbox (when available) also confines approved commands to the worktree with a read-only filesystem elsewhere. It is best-effort confinement, not a hard security boundary; see [Extensions](extensions.md) for the exact limits. Commands require approval unless auto-approve is on.
-- Plugins run in-process with Sylp's full privileges and are not sandboxed. Install only plugins you trust.
-- Auto-approve (`--auto-approve` or `SYLP_AUTO_APPROVE=1`) removes the per-command check entirely; combine it with the sandbox and a disposable environment.
+- Every tool call passes a deterministic permission engine before it runs; see [Permissions](permissions.md). Unknown shell commands ask, credential files and extension tools always ask a person, and `.git`/`.sylp` are denied to file tools.
+- Worktrees isolate edits; the shell sandbox (when available) also confines approved commands to the worktree with a read-only filesystem elsewhere, a private scratch directory as `/tmp`, network off by default, and a secret-scrubbed environment. It is best-effort confinement, not a hard security boundary; see [Extensions](extensions.md) for the exact limits.
+- When no sandbox backend works, Sylp never runs commands unsandboxed on its own: each command needs an explicit interactive yes, or set `SYLP_SANDBOX=off`.
+- Repository-supplied plugins and MCP servers load only after you approve their exact contents; approvals live in `~/.sylp/trusted.json` and re-prompt on any change. Plugins then run in-process with Sylp's full privileges and are not sandboxed. Install only plugins you trust.
+- Auto-approve (`--auto-approve` or `SYLP_AUTO_APPROVE=1`) answers routine command asks only; combine it with the sandbox and a disposable environment.
 - Sylp records model-reported checks in the task report but does not independently validate them. Review the diff before merging.
 
 ## Development

@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import memory
-from .extensions import ExtensionSet
+from .extensions import ExtensionSet, state_home
 from .git import common_dir, diff_summary, refresh_clean_worktree
+from .permissions import PermissionEngine
 from .providers import EmptyModelResponse, complete, list_models, save_default_model
 from .sandbox import SandboxPolicy, policy_from_env
 from .store import Store
@@ -91,7 +92,7 @@ def _system_prompt(task: dict[str, Any], *, interactive: bool = False, extra_too
         ending = "If a consequential ambiguity, destructive action, credential, or external side effect blocks you, stop and ask the user. End your response with exactly `SYLP_STATUS: WAITING_FOR_INPUT` followed by the question. When the work is complete, end with exactly `SYLP_STATUS: COMPLETE`, summarize changes, map each acceptance criterion to evidence or mark it unverified, and list the exact checks and results."
     return f"""You are Sylp, a coding agent running inside a persistent local harness. You own the task loop and use the provided tools to inspect and change the repository. The repository is at the current working directory.
 
-Work incrementally. Inspect before editing. Use apply_patch for focused changes, and git_status/git_diff to review the worktree. Keep changes focused and reviewable. Run relevant checks with run_command; it will ask the user for approval unless auto-approval was enabled. Never claim checks passed unless you observed their output.
+Work incrementally. Inspect before editing. Use apply_patch for focused changes, and git_status/git_diff to review the worktree. Keep changes focused and reviewable. Every tool call passes a deterministic permission engine before it runs: read-only commands and ordinary worktree edits proceed, risky or unfamiliar actions ask the user, and protected paths (.git, .sylp, credential files) are off limits. Never claim checks passed unless you observed their output.
 
 {extensions_line}{memory_section}{ending}
 
@@ -153,15 +154,19 @@ def _write_report(task: dict[str, Any], task_id: str, summary: str, transcript: 
 
 def _tool_outputs(task_id: str, task: dict[str, Any], calls: list[dict[str, Any]], provider: str, store: Store,
                   on_status: StatusCallback = None, extensions: ExtensionSet | None = None,
-                  sandbox: SandboxPolicy | None = None) -> list[dict[str, Any]]:
+                  sandbox: SandboxPolicy | None = None, permissions: PermissionEngine | None = None) -> list[dict[str, Any]]:
     outputs = []
     for index, call in enumerate(calls):
         name = str(call.get("name") or "")
-        _set_status(on_status, "Approval needed" if name == "run_command" and not task["auto_approve"]
-                    else f"Running {name}")
         arguments = call.get("arguments")
         if not isinstance(arguments, dict):
             arguments = {"_invalid_arguments": arguments}
+        needs_approval = False
+        if permissions is not None:
+            decision = permissions.decide(name, arguments)
+            needs_approval = (decision.verdict == "ask"
+                              and not (permissions.auto_approve and not decision.sensitive))
+        _set_status(on_status, "Approval needed" if needs_approval else f"Running {name}")
         store.event(task_id, "tool_started", {"name": name, "arguments": arguments, "call_id": call.get("id")})
         print(f"\n[tool {name} running]", flush=True)
         output_streamed = False
@@ -191,7 +196,8 @@ def _tool_outputs(task_id: str, task: dict[str, Any], calls: list[dict[str, Any]
         try:
             result = execute_tool(name, arguments, Path(task["worktree"]),
                                   auto_approve=bool(task["auto_approve"]), on_output=on_output,
-                                  on_checkpoint=flush_output, extensions=extensions, sandbox=sandbox)
+                                  on_checkpoint=flush_output, extensions=extensions, sandbox=sandbox,
+                                  permissions=permissions)
         except KeyboardInterrupt:
             flush_output()
             result = "Tool interrupted by the user. Inspect the worktree before retrying this action."
@@ -536,8 +542,11 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
         print(f"[extensions] {notice}", flush=True)
     tool_schemas = TOOL_SCHEMAS + extension_schemas
 
+    permissions = PermissionEngine.load(state_home(), Path(task["repo"]),
+                                        auto_approve=bool(task["auto_approve"]))
     sandbox = policy_from_env()
     if sandbox.mode != "off":
+        sandbox.scratch = task_home(task_id) / "scratch"
         try:
             sandbox.writable.append(common_dir(Path(task["repo"])))
         except Exception:
@@ -646,7 +655,7 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
         try:
             if calls:
                 _tool_outputs(task_id, task, calls, provider, store, on_status,
-                              extensions=extensions, sandbox=sandbox)
+                              extensions=extensions, sandbox=sandbox, permissions=permissions)
         except KeyboardInterrupt:
             _set_status(on_status, "Paused")
             store.update(task_id, status="paused")

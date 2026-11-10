@@ -15,9 +15,10 @@ Sylp opens an interactive coding session in your repository. It runs its own mod
 - **Keeps task edits separate.** Every task gets its own Git branch and worktree.
 - **Starts from your current checkout.** A new task includes tracked edits and untracked files already in the repository, so it can work on the code you have open before you commit it.
 - **Uses models directly.** Connect OpenAI, Anthropic, OpenRouter, or an OpenAI-compatible endpoint. Sylp does not launch Codex CLI or Claude Code.
-- **Sandboxes shell commands.** Approved commands can be confined to the task worktree with the rest of the filesystem read-only (bubblewrap on Linux, sandbox-exec on macOS), with optional network cut-off.
+- **Gates every tool call on a deterministic permission engine.** Read-only commands and ordinary worktree edits proceed, unknown or compound shell commands ask, and credential files, extension tools, `.git`, and `.sylp` are protected. User and repository policies live in `permissions.json`; a repository can only tighten policy, never loosen it. See [docs/permissions.md](docs/permissions.md).
+- **Sandboxes shell commands.** Approved commands can be confined to the task worktree with the rest of the filesystem read-only (bubblewrap on Linux, sandbox-exec on macOS), network off by default, a private scratch directory as `/tmp`, and a secret-scrubbed environment. Sylp never falls back to unsandboxed execution without an explicit yes.
 - **Speaks MCP.** Stdio Model Context Protocol servers configured in `mcp.json` add their tools to the model loop as `mcp__<server>__<tool>`.
-- **Loads local plugins.** Drop a Python file in `~/.sylp/plugins/` or `<repo>/.sylp/plugins/` to add your own tools.
+- **Loads local plugins.** Drop a Python file in `~/.sylp/plugins/` or `<repo>/.sylp/plugins/` to add your own tools. Repository-supplied extensions load only after you approve their exact contents.
 - **Hands back reviewable work.** A completed task includes a report with its goal, criteria, agent summary, diff summary, and provider-reported token usage when available. Sylp does not infer billed cost or merge changes for you.
 
 ## Memory
@@ -173,7 +174,7 @@ sylp run "Add pagination to the projects API" \
   --accept "Pagination has tests for first, middle, and final pages"
 ```
 
-Shell commands require approval by default. When a sandbox backend is available, approved commands run confined to the task worktree with the rest of the filesystem read-only; the approval prompt shows the active backend. See [docs/extensions.md](docs/extensions.md) for `SYLP_SANDBOX` modes and limits. Add `--auto-approve` to let the model run commands without asking each time:
+Unfamiliar shell commands require approval by default; known read-only ones (`ls`, `git status`, ...) just run. When a sandbox backend is available, approved commands run confined to the task worktree with the rest of the filesystem read-only and no network; the approval prompt shows the active backend. See [docs/permissions.md](docs/permissions.md) for the policy files and [docs/extensions.md](docs/extensions.md) for `SYLP_SANDBOX` modes and limits. Add `--auto-approve` to let the model run routine commands without asking each time:
 
 ```sh
 sylp run "Fix the failing tests" --repo ~/code/my-project \
@@ -218,6 +219,7 @@ See the [comparison protocol](benchmarks/PROTOCOL.md) for a reproducible Sylp vs
 - [Architecture](docs/architecture.md) - module map, task lifecycle, the model loop, and interruption recovery
 - [Providers](docs/providers.md) - sign-in paths, model listing, and per-provider behavior
 - [Configuration](docs/configuration.md) - state layout, environment variables, safety, and development setup
+- [Permissions](docs/permissions.md) - the allow/ask/deny engine, policy files, and repository extension trust
 - [Extensions](docs/extensions.md) - shell sandbox, MCP servers, and local plugins
 
 ## License

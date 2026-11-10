@@ -4,21 +4,23 @@ Sylp's built-in tools cover the repository basics. Three extension points add co
 
 ## Shell sandbox
 
-`run_command` can confine each approved shell command so it can write only to the task worktree, the repository's Git directory, and `/tmp`; the rest of the filesystem is read-only. Network access stays on by default and can be cut off.
+`run_command` can confine each approved shell command so it can write only to the task worktree, the repository's Git directory, and a private per-task scratch directory it sees as `/tmp`; the rest of the filesystem is read-only. Network access is off by default and can be enabled.
 
 | Setting | Values | Default |
 | --- | --- | --- |
 | `SYLP_SANDBOX` | `off`, `auto`, `require` | `auto` |
-| `SYLP_SANDBOX_NETWORK` | `on`/`1` or `off`/`0`/`false`/`no` | `on` |
+| `SYLP_SANDBOX_NETWORK` | `on`/`1` or `off`/`0`/`false`/`no` | `off` |
 
 Backends, tried in order:
 
 - **Linux:** [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`). Commands run in user/IPC/PID/UTS namespaces with the filesystem bound read-only except the writable paths above. `--die-with-parent` ensures no orphaned processes when a task is interrupted.
-- **macOS:** `sandbox-exec` with a profile that denies writes outside the worktree, the Git directory, and the temp directories.
+- **macOS:** `sandbox-exec` with a profile that denies writes outside the worktree, the Git directory, and the scratch directory (temp users are pointed at it via `TMPDIR`).
 
-`auto` sandboxes when a backend exists and warns in the tool result when none is available (or when the backend fails a one-time probe, e.g. a kernel that forbids user namespaces). `require` refuses to run commands without a working backend. `off` restores the pre-sandbox behavior. The approval prompt shows the active backend, and `sylp sandbox` (with `--test` for a probe run) reports the current status.
+`auto` sandboxes when a backend works. When none is available (or the backend fails a one-time probe, e.g. a kernel that forbids user namespaces), Sylp never runs the command unsandboxed on its own: it asks once per command whether to run without confinement, and sessions that cannot prompt skip the command with instructions. `--auto-approve` does not answer this ask. `require` refuses to run commands without a working backend. `off` disables the sandbox explicitly. The approval prompt shows the active backend, and `sylp sandbox` (with `--test` for a probe run) reports the current status.
 
-The sandbox is best-effort confinement for honest mistakes and over-eager commands, not a hard security boundary against a determined adversary: it shares `/tmp`, allows network by default, and (on Linux) depends on unprivileged user namespaces. Keep reviewing commands before approving them, and combine the sandbox with a disposable environment for untrusted repositories. Plugins (below) run in-process and are **not** confined by it.
+Commands also receive a scrubbed environment: variables whose names look like credentials (`OPENAI_API_KEY`, `GITHUB_TOKEN`, `AWS_SECRET_ACCESS_KEY`, ...) are removed so host secrets never reach model-invoked commands or MCP servers. List names in `SYLP_ENV_ALLOW` (comma-separated) to pass specific variables through, and put credentials an MCP server needs in its explicit `env` config block.
+
+The sandbox is best-effort confinement for honest mistakes and over-eager commands, not a hard security boundary against a determined adversary: it restricts writes but not reads of world-readable host files, and (on Linux) depends on unprivileged user namespaces. Keep reviewing commands before approving them, and combine the sandbox with a disposable environment for untrusted repositories. Plugins (below) run in-process and are **not** confined by it.
 
 ## MCP servers
 
@@ -72,3 +74,7 @@ Each tool dict needs a `name` (matching `^[a-zA-Z0-9_-]{1,64}$`, not colliding w
 Files starting with `_` are skipped. A plugin that fails to import or register is reported and skipped; it does not stop other plugins or the task. `sylp plugins` lists discovered plugins, their tools, and any load errors.
 
 Plugins run in-process with Sylp's full privileges: they can read your files, use the network, and run commands without approval or sandboxing. Install only plugins you trust, and review them the way you would review a dependency.
+
+## Repository extension trust
+
+Extensions supplied by the repository itself (`<repo>/.sylp/plugins/`, `<repo>/.sylp/mcp.json`) are code the model's environment asked you to run, so they load only after you approve their exact contents. On first encounter Sylp lists the plugin files and MCP server commands and asks; the approval is recorded in `~/.sylp/trusted.json`, and any change to those files asks again. Sessions that cannot prompt skip untrusted repository extensions with a notice. Extensions under your own `~/.sylp/` need no approval. The model's file tools cannot write into `.sylp/` at all (see [Permissions](permissions.md)), so a task cannot plant or rewrite its own extensions.
