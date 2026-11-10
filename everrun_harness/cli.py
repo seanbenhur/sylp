@@ -216,7 +216,20 @@ def _main(*, ui: TerminalUI | None = None) -> None:
                                                    "model": args.model, "interactive": True})
                 print(f"Everrun session {task_id} · {args.provider}/{args.model}")
                 print(f"Working in {worktree}. Use /help for session commands.\n")
-                run_task(task_id, interactive=True, on_status=ui.set_status if ui else None)
+                current_id = task_id
+                while True:
+                    if ui is not None:
+                        ui.bind_session(repo, current_id)
+                    switch_to = run_task(current_id, interactive=True, on_status=ui.set_status if ui else None)
+                    if not switch_to:
+                        break
+                    next_task = store.get(switch_to)
+                    if ui is None or next_task is None:
+                        print(f"Open the session with: everrun resume {switch_to}")
+                        break
+                    current_id = switch_to
+                    ui.title = f"Everrun · {repo.name} · {next_task['provider']}/{next_task['model']}"
+                    print(f"\nEverrun switched to session {current_id} · {next_task['goal']}\n")
 
             if sys.stdin.isatty() and sys.stdout.isatty():
                 if ui is None:
@@ -233,8 +246,24 @@ def _main(*, ui: TerminalUI | None = None) -> None:
             if args.model:
                 store.update(args.task_id, model=args.model)
             def resume_session() -> None:
-                run_task(args.task_id, answer=args.answer, interactive=not args.batch,
-                         on_status=ui.set_status if ui else None)
+                current_id = args.task_id
+                answer = args.answer
+                while True:
+                    current = store.get(current_id)
+                    if ui is not None and current is not None:
+                        ui.bind_session(Path(current["repo"]), current_id)
+                    switch_to = run_task(current_id, answer=answer, interactive=not args.batch,
+                                         on_status=ui.set_status if ui else None)
+                    answer = None
+                    if args.batch or not switch_to:
+                        break
+                    next_task = store.get(switch_to)
+                    if ui is None or next_task is None:
+                        print(f"Open the session with: everrun resume {switch_to}")
+                        break
+                    current_id = switch_to
+                    ui.title = f"Everrun · {Path(next_task['repo']).name} · {next_task['provider']}/{next_task['model']}"
+                    print(f"\nEverrun switched to session {current_id} · {next_task['goal']}\n")
 
             if not args.batch and sys.stdin.isatty() and sys.stdout.isatty():
                 if ui is None:

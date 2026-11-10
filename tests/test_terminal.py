@@ -1,9 +1,39 @@
 from __future__ import annotations
 
+import curses
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from everrun_harness.terminal import _MAX_TRANSCRIPT_LINES, TerminalUI
+
+
+class FakeScreen:
+    def __init__(self, height: int = 30, width: int = 120):
+        self.height = height
+        self.width = width
+        self.calls: list[tuple[int, int, str]] = []
+
+    def getmaxyx(self):
+        return (self.height, self.width)
+
+    def erase(self):
+        pass
+
+    def refresh(self):
+        pass
+
+    def hline(self, *args):
+        pass
+
+    def addch(self, *args):
+        pass
+
+    def move(self, *args):
+        pass
+
+    def addnstr(self, y, x, text, n, *args):
+        self.calls.append((y, x, text[:n] if n and n > 0 else text))
 
 
 class TerminalTests(unittest.TestCase):
@@ -59,6 +89,83 @@ class TerminalTests(unittest.TestCase):
         ui.write("\nnew output")
 
         self.assertEqual(ui.scroll, 11)
+
+    def test_task_rail_marks_current_session_and_counts_attention(self):
+        ui = TerminalUI("Everrun")
+        ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [
+            {"id": "aaa", "goal": "Current task", "status": "running"},
+            {"id": "bbb", "goal": "Waiting task", "status": "waiting_for_input"},
+            {"id": "ccc", "goal": "Paused task", "status": "paused"},
+        ], diff_summary=lambda: "No changes yet.")
+
+        entries = ui._rail_entries()
+
+        self.assertEqual([entry["id"] for entry in entries], ["aaa", "bbb", "ccc"])
+        self.assertTrue(entries[0]["current"])
+        self.assertEqual(entries[1]["icon"], "!")
+        self.assertEqual(entries[2]["icon"], "❚")
+        self.assertEqual(ui._attention_count(), 1)
+
+    def test_panels_stay_off_without_session_binding(self):
+        ui = TerminalUI("Everrun")
+
+        self.assertEqual(ui._rail_entries(), [])
+        self.assertEqual(ui._attention_count(), 0)
+        self.assertEqual(ui._rail_width(120), 0)
+        self.assertEqual(ui._changes_width(120), 0)
+        self.assertEqual(ui._transcript_width(), 118)
+
+    def test_changes_pane_wraps_diff_summary_to_panel_width(self):
+        ui = TerminalUI("Everrun")
+        ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [],
+                        diff_summary=lambda: " app.py | 5 +++--\n " + "x" * 100)
+
+        self.assertFalse(ui.show_changes)
+        ui.show_changes = True
+        self.assertEqual(ui._changes_width(120), 38)
+        self.assertEqual(ui._changes_width(80), 0)
+        lines = ui._changes_lines(38)
+        self.assertTrue(any("app.py" in line for line in lines))
+        self.assertLessEqual(max(map(len, lines)), 35)
+
+    def test_f2_and_f3_toggle_panels_from_the_prompt(self):
+        keys = iter([curses.KEY_F2, curses.KEY_F3, "\x03"])
+
+        class KeyScreen:
+            def get_wch(self):
+                return next(keys)
+
+        ui = TerminalUI("Everrun")
+        ui.screen = KeyScreen()
+        ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [], diff_summary=lambda: "")
+        with patch.object(ui, "_draw"), patch.object(ui, "_record_input"):
+            value = ui.input("You> ")
+
+        self.assertEqual(value, "/exit")
+        self.assertFalse(ui.show_rail)
+        self.assertTrue(ui.show_changes)
+
+    def test_draw_renders_rail_changes_and_attention_header(self):
+        ui = TerminalUI("Everrun")
+        ui.screen = FakeScreen()
+        ui._colors = False
+        ui.bind_session(Path("/repo"), "aaa", list_sessions=lambda: [
+            {"id": "aaa", "goal": "Fix bug", "status": "running"},
+            {"id": "bbb", "goal": "Docs", "status": "waiting_for_input"},
+        ], diff_summary=lambda: " app.py | 5 +++--")
+        ui.show_changes = True
+        ui.lines = ["Everrun> hello"]
+
+        ui._draw()
+
+        rendered = "\n".join(text for _, _, text in ui.screen.calls)
+        self.assertIn("Sessions", rendered)
+        self.assertIn("aaa", rendered)
+        self.assertIn("Changes", rendered)
+        self.assertIn("app.py", rendered)
+        self.assertIn("1 need input", rendered)
+        transcript_x = [x for _, x, text in ui.screen.calls if "Everrun> hello" in text]
+        self.assertTrue(transcript_x and transcript_x[0] >= 26)
 
 
 if __name__ == "__main__":

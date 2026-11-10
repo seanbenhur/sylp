@@ -128,7 +128,9 @@ cd ~/code/my-project
 everrun
 ```
 
-On first use, Everrun selects the only connected provider automatically. If several providers are connected, it asks which one to use; it then lets you choose a model and remembers both choices. It opens a full-screen terminal session in your repository, where you can start a task or resume one of the saved sessions. Enter sends a message; Ctrl+O adds a line to a multi-line message. Use `/help` to see session commands: `/files` lists repository files, `/diff` reviews task changes, and `/compact` writes a durable conversation checkpoint. `/exit` pauses and saves; `/done` creates a review report.
+On first use, Everrun selects the only connected provider automatically. If several providers are connected, it asks which one to use; it then lets you choose a model and remembers both choices. It opens a full-screen terminal session in your repository, where you can start a task or resume one of the saved sessions. Enter sends a message; Ctrl+O adds a line to a multi-line message. Use `/help` to see session commands: `/files` lists repository files, `/diff` reviews task changes, `/switch` moves to another paused session, and `/compact` writes a durable conversation checkpoint. `/exit` pauses and saves; `/done` creates a review report.
+
+In a wide terminal (100+ columns) the UI shows a session rail on the left listing every session for the repository: `●` running, `!` waiting for your input, `❚` paused, `✓` ready for review, with the current session marked by `▸`. Sessions waiting for input are also counted in the header. Press F2 to toggle the rail, and F3 to open a changes pane on the right with the task's live diff summary; both need a session to be bound and hide automatically on narrow terminals. `/switch <id>` pauses the current session and opens another paused one without leaving the full-screen UI.
 
 For one-shot or automated tasks, start directly:
 

@@ -286,5 +286,82 @@ class RunnerIntegrationTests(unittest.TestCase):
                     worker.stderr.close()
 
 
+class SessionSwitchTests(unittest.TestCase):
+    def _repo_with_two_sessions(self, directory: str):
+        root = Path(directory) / "repo"
+        root.mkdir()
+        subprocess.run(["git", "init", "-b", "main"], cwd=root, check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Everrun Test"], cwd=root, check=True)
+        subprocess.run(["git", "config", "user.email", "everrun-test@example.invalid"], cwd=root, check=True)
+        (root / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+        subprocess.run(["git", "add", "app.py"], cwd=root, check=True)
+        subprocess.run(["git", "commit", "-m", "baseline"], cwd=root, check=True, capture_output=True)
+        store = Store()
+        worktree, base = prepare_worktree(root, "switchsrc1")
+        task_id = store.create(goal="First session", acceptance=[], repo=root, worktree=worktree,
+                               base_commit=base, model="fake-model", provider="openai")
+        worktree2, base2 = prepare_worktree(root, "switchdst1")
+        target_id = store.create(goal="Second session", acceptance=[], repo=root, worktree=worktree2,
+                                 base_commit=base2, model="fake-model", provider="openai")
+        store.update(target_id, status="paused")
+        return root, store, task_id, target_id
+
+    def test_switch_command_pauses_current_session_and_returns_target(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state"
+            with patch.dict(os.environ, {"EVERUN_HOME": str(state)}):
+                root, store, task_id, target_id = self._repo_with_two_sessions(directory)
+                responses = iter([{"text": "Done so far.", "tool_calls": [],
+                                   "history_items": [{"type": "message", "role": "assistant",
+                                                      "content": [{"type": "output_text",
+                                                                   "text": "Done so far."}]}]}])
+                with patch.object(runner, "complete", side_effect=lambda *args, **kwargs: next(responses)), \
+                        patch("builtins.input", return_value=f"/switch {target_id}"), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    result = runner.run_task(task_id, interactive=True)
+                final = store.get(task_id)
+                events = store.events(task_id)
+                store.close()
+
+            self.assertEqual(result, target_id)
+            self.assertEqual(final["status"], "paused")
+            self.assertTrue(any(event["kind"] == "session_switched" and f'"to": "{target_id}"' in event["payload"]
+                                for event in events))
+
+    def test_switch_lists_sessions_and_rejects_bad_targets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state"
+            with patch.dict(os.environ, {"EVERUN_HOME": str(state)}):
+                root, store, task_id, target_id = self._repo_with_two_sessions(directory)
+                task = store.get(task_id)
+                with patch("builtins.input",
+                           side_effect=["/switch", "/switch nope", f"/switch {task_id}", "/exit"]), \
+                        contextlib.redirect_stdout(io.StringIO()) as out:
+                    value = runner._read_session_message(task, store, "openai")
+                store.close()
+
+            self.assertEqual(value, "/exit")
+            printed = out.getvalue()
+            self.assertIn("Paused sessions you can switch to:", printed)
+            self.assertIn(target_id, printed)
+            self.assertIn("No session 'nope' exists for this repository.", printed)
+            self.assertIn("already in this session", printed)
+
+    def test_switch_rejects_sessions_that_are_not_paused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "state"
+            with patch.dict(os.environ, {"EVERUN_HOME": str(state)}):
+                root, store, task_id, target_id = self._repo_with_two_sessions(directory)
+                store.update(target_id, status="running")
+                task = store.get(task_id)
+                with patch("builtins.input", side_effect=[f"/switch {target_id}", "/exit"]), \
+                        contextlib.redirect_stdout(io.StringIO()) as out:
+                    value = runner._read_session_message(task, store, "openai")
+                store.close()
+
+            self.assertEqual(value, "/exit")
+            self.assertIn("switch to a paused or waiting session instead", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

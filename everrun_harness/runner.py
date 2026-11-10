@@ -369,7 +369,7 @@ def _read_session_message(task: dict[str, Any], store: Store, provider: str) -> 
         if value in {"/exit", "/quit", "/done"}:
             return value
         if value == "/help":
-            print("/help  show commands\n/model [id]  show or switch models\n/status  show session details\n/files  list repository files\n/diff  inspect task changes\n/compact  save a conversation checkpoint\n/exit  pause and save\n/done  finish and create a review report")
+            print("/help  show commands\n/model [id]  show or switch models\n/status  show session details\n/files  list repository files\n/diff  inspect task changes\n/switch [id]  list paused sessions or switch to one\n/compact  save a conversation checkpoint\n/exit  pause and save\n/done  finish and create a review report")
             continue
         if value == "/status":
             print(f"Session {task['id']} · {task['status']} · {provider}/{task['model']}\nWorktree: {task['worktree']}")
@@ -396,6 +396,33 @@ def _read_session_message(task: dict[str, Any], store: Store, provider: str) -> 
                 save_default_model(provider, model)
                 print(f"Using {provider}/{model}.")
             continue
+        if value == "/switch" or value.startswith("/switch "):
+            target_id = value.partition(" ")[2].strip()
+            repo_key = str(Path(task["repo"]).resolve())
+            if not target_id:
+                switchable = [item for item in store.list()
+                              if item["id"] != task["id"]
+                              and item["status"] in {"paused", "waiting_for_input"}
+                              and str(Path(item["repo"]).resolve()) == repo_key]
+                if not switchable:
+                    print("No other paused sessions exist for this repository.")
+                else:
+                    print("Paused sessions you can switch to:")
+                    for item in switchable[:10]:
+                        print(f"  {item['id']}  {item['status']}  {item['goal']}")
+                    print("Use /switch <id>. The current session pauses first.")
+                continue
+            target = store.get(target_id)
+            if target is None or str(Path(target["repo"]).resolve()) != repo_key:
+                print(f"No session {target_id!r} exists for this repository. Use /switch to list sessions.")
+                continue
+            if target["id"] == task["id"]:
+                print("You are already in this session.")
+                continue
+            if target["status"] not in {"paused", "waiting_for_input"}:
+                print(f"Session {target_id} is {target['status']}; switch to a paused or waiting session instead.")
+                continue
+            return value
         return value
 
 
@@ -418,6 +445,27 @@ def _compact_history(task_id: str, task: dict[str, Any], provider: str, history:
     return store.messages(task_id)
 
 
+def _switch_target(value: str) -> str | None:
+    if value.startswith("/switch "):
+        target = value.split(None, 1)[1].strip()
+        if target:
+            return target
+    return None
+
+
+def _pause_for_switch(task_id: str, target: str, store: Store, on_status: StatusCallback,
+                      summary: str | None = None) -> str:
+    _set_status(on_status, f"Switching to session {target}")
+    if summary is None:
+        store.update(task_id, status="paused")
+    else:
+        store.update(task_id, status="paused", summary=summary[:4000])
+    store.event(task_id, "session_switched", {"to": target})
+    print(f"Session paused. Switching to session {target} "
+          f"(outside the full-screen UI, open it with: everrun resume {target})")
+    return target
+
+
 def _read_interactive_message(task_id: str, task: dict[str, Any], provider: str,
                               history: list[dict[str, Any]], store: Store,
                               on_status: StatusCallback = None) -> tuple[str, list[dict[str, Any]]]:
@@ -434,7 +482,7 @@ def _read_interactive_message(task_id: str, task: dict[str, Any], provider: str,
 
 def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = False,
               store: Store | None = None, on_status: StatusCallback = None,
-              extensions: ExtensionSet | None = None) -> None:
+              extensions: ExtensionSet | None = None) -> str | None:
     _set_status(on_status, "Opening session")
     store = store or Store()
     task = store.get(task_id)
@@ -490,6 +538,9 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
             store.update(task_id, status="paused")
             print(f"Session remains paused. Resume with: everrun resume {task_id}")
             return
+        switch = _switch_target(user_input)
+        if switch:
+            return _pause_for_switch(task_id, switch, store, on_status)
         if user_input == "/done":
             summary = task.get("summary") or "Interactive session closed by the user."
             report_path = _write_report(task, task_id, summary, "", store)
@@ -590,6 +641,9 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
                     store.event(task_id, "session_paused", {"turn": turn + 1})
                     print(f"Session paused. Resume with: everrun resume {task_id}")
                     return
+                switch = _switch_target(user_input)
+                if switch:
+                    return _pause_for_switch(task_id, switch, store, on_status)
                 if user_input == "/done":
                     summary = text.strip() or "Interactive session closed by the user."
                     report_path = _write_report(task, task_id, summary, "\n".join(transcript), store)
@@ -624,6 +678,9 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
                 store.event(task_id, "session_paused", {"turn": turn + 1})
                 print(f"Session paused. Resume with: everrun resume {task_id}")
                 return
+            switch = _switch_target(user_input)
+            if switch:
+                return _pause_for_switch(task_id, switch, store, on_status, summary=text.strip())
             if user_input == "/done":
                 summary = text.strip() or "Interactive session completed."
                 report_path = _write_report(task, task_id, summary, "\n".join(transcript), store)
@@ -654,7 +711,8 @@ def _run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fa
 
 
 def run_task(task_id: str, *, answer: str | None = None, interactive: bool = False,
-             on_status: StatusCallback = None) -> None:
+             on_status: StatusCallback = None) -> str | None:
+    """Run a task; in interactive sessions, returns a /switch target session id when one was requested."""
     with _task_lock(task_id):
         store = Store()
         extensions = None
@@ -662,8 +720,8 @@ def run_task(task_id: str, *, answer: str | None = None, interactive: bool = Fal
             task = store.get(task_id)
             if task:
                 extensions = ExtensionSet.load(Path(task["repo"]))
-            _run_task(task_id, answer=answer, interactive=interactive, store=store, on_status=on_status,
-                      extensions=extensions)
+            return _run_task(task_id, answer=answer, interactive=interactive, store=store, on_status=on_status,
+                             extensions=extensions)
         finally:
             if extensions is not None:
                 extensions.close()
