@@ -41,6 +41,58 @@ First check CLI version, available loading flags and account/billing status. No 
 
 Render from the same selected database with `python3 recorder.py render /tmp/history.html`. No plugin registration, marketplace action, account login, repository push or publication is performed by these build scripts.
 
+## Step-by-step Mac trial (Cursor first)
+
+Concrete commands for a first live check on a Mac with Python 3.10+ and git. This expands the "Local integration trial" section above; the same capture policy and warnings apply. Not yet exercised on a real Cursor CLI.
+
+1. Get the code and build the bundles:
+
+```sh
+git clone -b experiment/code-provenance-adapters https://github.com/seanbenhur/sylp.git ~/sylp-prov
+cd ~/sylp-prov/experiments/provenance
+python3 --version   # needs 3.10+
+python3 build_bundles.py
+```
+
+Optional sanity check: `python3 -m unittest discover -s tests`
+
+2. Make a throwaway repo (never sensitive or employer code):
+
+```sh
+mkdir ~/prov-test && cd ~/prov-test
+git init && echo "print('hi')" > a.py && git add . && git commit -m init
+```
+
+3. Opt in to local capture, in the same terminal you will use for the CLI:
+
+```sh
+export SYLP_PROVENANCE_DB=$HOME/prov-cursor.db
+python3 ~/sylp-prov/experiments/provenance/dist/cursor/recorder.py init ~/prov-test --accept-local-capture
+```
+
+The default database supports ONE repository; keep `SYLP_PROVENANCE_DB` set for both init and the CLI process, and use a separate path per test.
+
+4. Check `agent --version` and your plan/billing status before any prompt, then launch:
+
+```sh
+cd ~/prov-test && agent --plugin-dir ~/sylp-prov/experiments/provenance/dist/cursor
+```
+
+5. Give it one small prompt that edits `a.py`, then render:
+
+```sh
+python3 ~/sylp-prov/experiments/provenance/dist/cursor/recorder.py render ~/history.html
+```
+
+Open `~/history.html` in a browser.
+
+Caveats for this trial:
+
+- `agent --plugin-dir` comes from Cursor's CLI docs and has not been run here. If your version rejects it, keep the exact error and `agent --version` output.
+- The step 5 prompt uses your own Cursor quota/billing; whether to spend it is your call.
+- Captured text stays local and unencrypted, which is why the repo must be a throwaway.
+- Codex needs different setup: no verified local-plugin load command exists yet, so follow the Codex notes under "Local integration trial" until a verified flow replaces them.
+
 ## Remaining validation gates
 
 All host integrations remain unverified until a version-pinned live session demonstrates actual prompt IDs, file-change hooks, assistant response association, failure events and restart behavior. Host schema differences and policy settings may require adjustments. No supported-version floor is claimed. This is not a production-compatible support matrix.
