@@ -59,10 +59,9 @@ Trial caveats:
 
 ## What you get
 
-`history.html` contains:
+`history.html` opens with **How this repository evolved**: a graph with prompts, tool windows and recorded changes on one lane and git commits on the other, edges connecting each change to the prompt and tool window behind it. Click a prompt or change node to jump to its thread below. Commits are labeled by their relationship to recorded evidence: inside a recorded tool window (possibly agent-made, not proven), during a recorded session, or outside recorded sessions. If the hooks did not fire in a live session, the page says so plainly and shows only the commits.
 
-- **Change cards.** Each recorded file change with its diff, the prompt and final assistant response recorded around it, and an evidence label (see below).
-- **How this repository evolved.** A timeline built at render time: recorded prompts and tool windows, captured changes, and the repository's commits and branches read from git. Commits are labeled by their relationship to recorded evidence: inside a recorded tool window (possibly agent-made, not proven), during a recorded session, or outside recorded sessions. Branches shown are those present at render time. Nothing is synthesized: if it was not recorded, it is labeled unknown.
+Below the graph, **The conversations behind the changes**: each recorded prompt as a thread - your prompt, the recorded assistant response, and the diffs produced around it, each with an evidence label (see below). Changes without a recorded prompt are grouped separately and never guessed at. Nothing is uploaded; the page makes no network calls.
 
 ## How it works: hooks, not skills
 
