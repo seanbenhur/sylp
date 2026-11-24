@@ -1,10 +1,78 @@
-# Sylp provenance / three-host private spike
+# Sylp provenance: see how your code came to be
 
-Version 0.0.2 adds separate Claude Code, Codex CLI and Cursor CLI capture adapters around one local recorder/viewer. None has been loaded in a real host CLI here. No authenticated model session or paid use was attempted. Generated hook commands were executed independently using fixture payloads, not by the host programs.
+Local-first, open-source code provenance for AI coding agents. Click a code change and see the prompt, the assistant response and the tool action recorded around it. One small recorder works with Claude Code, Codex CLI and Cursor CLI, plus an evolution timeline that shows how the repository grew: prompts, tool windows, file changes, commits and branches in one view.
+
+Inspired by delta.dev's "See how the code came to be". Delta is a hosted product by Zed Industries; this is not Delta, is not affiliated with it, implements only that one idea, and claims no Delta compatibility or parity. Other open-source projects explore the same space for a single host (for example promptrail and git-for-prompts); this spike's angle is three hosts from one recorder, evidence labels that keep unknowns unknown, and zero dependencies beyond Python's stdlib and SQLite. Nothing is uploaded anywhere.
+
+## Status
+
+Private experiment. Fixture-tested (31 checks, simulated hook payloads driving real file edits), **not yet verified in a live CLI session**. Hook event names and payload fields differ between hosts and may change between CLI versions. Use it only in a disposable repository.
+
+## Install as a plugin (one command)
+
+Needs Python 3.10+ and git. The plugin directories are committed under `plugins/`, so there is no build step.
+
+```sh
+git clone -b experiment/code-provenance-adapters https://github.com/seanbenhur/sylp.git ~/sylp-prov
+cd ~/sylp-prov/experiments/provenance
+```
+
+**Cursor CLI** (`agent`):
+
+```sh
+python3 install.py --host cursor --repo ~/prov-test
+cd ~/prov-test && agent
+```
+
+`install.py` creates the throwaway repo if missing, copies the plugin into `~/.cursor/plugins/local/sylp-provenance` (Cursor's documented local-plugin location, loaded by the editor and the CLI), and initializes the capture database. If your build blocks local plugin imports, launch with `agent --plugin-dir ~/sylp-prov/experiments/provenance/plugins/cursor` instead (`--plugin-dir` is documented in Cursor's CLI parameter reference; not exercised on a real install here).
+
+**Codex CLI**:
+
+```sh
+python3 install.py --host codex --repo ~/prov-test2
+cd ~/prov-test2 && codex
+```
+
+This writes a project-level `.codex/hooks.json` (a documented Codex hook location) pointing at the committed plugin by absolute path. Codex skips untrusted hooks: open `/hooks` in the CLI and trust the sylp provenance hooks first. `install.py --host codex --marketplace` instead installs through the documented personal-marketplace flow (`~/.codex/plugins/` + `~/.agents/plugins/marketplace.json`, then `/plugins` to enable); that flow is written from the official docs and is not verified against a live Codex install.
+
+**Claude Code**:
+
+```sh
+python3 install.py --host claude --repo ~/prov-test3
+cd ~/prov-test3 && claude --plugin-dir ~/sylp-prov/experiments/provenance/plugins/claude
+```
+
+Then give the agent one small prompt that edits `a.py`, and render:
+
+```sh
+python3 ~/sylp-prov/experiments/provenance/recorder.py render ~/history.html
+```
+
+Open `~/history.html`. The render command is host-independent; it reads only the local database and the repository's git history.
+
+Trial caveats:
+
+- The first prompt you give uses your own plan/quota with that host. Whether to spend it is your call. Check `agent --version` / `codex --version` / `claude --version` and your plan first.
+- Captured text stays local and unencrypted, which is why the repo must be a throwaway.
+- The default database supports ONE repository. Use `--db` (or `SYLP_PROVENANCE_DB`) per extra repo, outside the repo.
+- Uninstall: remove the plugin folder (`~/.cursor/plugins/local/sylp-provenance`, or `~/.codex/plugins/sylp-provenance`), any `.codex/hooks.json` written by the installer, and the database.
+
+## What you get
+
+`history.html` contains:
+
+- **Change cards.** Each recorded file change with its diff, the prompt and final assistant response recorded around it, and an evidence label (see below).
+- **How this repository evolved.** A timeline built at render time: recorded prompts and tool windows, captured changes, and the repository's commits and branches read from git. Commits are labeled by their relationship to recorded evidence: inside a recorded tool window (possibly agent-made, not proven), during a recorded session, or outside recorded sessions. Branches shown are those present at render time. Nothing is synthesized: if it was not recorded, it is labeled unknown.
+
+## How it works: hooks, not skills
+
+Capture uses each host's **hooks**: lifecycle events (`sessionStart`/`beforeSubmitPrompt`/`preToolUse`/`postToolUse`/`stop` on Cursor; `SessionStart`/`UserPromptSubmit`/`PreToolUse`/`PostToolUse`/`Stop`/`SessionEnd` on Codex and Claude) delivered as JSON payloads to the recorder. Hooks fire deterministically on every event, which is what makes provenance capture reliable.
+
+Agent **skills** (SKILL.md guidance shipped in a plugin) can steer an agent's behavior, but they load at the model's discretion, carry no event payloads, and cannot guarantee that anything is recorded per edit. A skill may later complement the plugin (for example a command that renders the report from inside a session), but skills alone cannot capture provenance. All three hosts support plugin-bundled hooks, so capture stays on hooks.
+
+Each host gets a self-contained directory under `plugins/<host>/` with its manifest (`.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json` plus a portable root `plugin.json`, `.claude-plugin/plugin.json`), `hooks/hooks.json`, and copies of the shared `recorder.py` and `adapters.py`. Tests enforce that the copies never drift from the shared code.
 
 ## Host adapters
-
-Run `python3 build_bundles.py` to prepare self-contained folders in `dist/claude`, `dist/codex` and `dist/cursor`. Each contains only its own manifest/hooks, recorder and shared adapter module. Do not mix the hooks files between hosts or load all bundles in one host.
 
 - Claude: prompt_id, session_id, tool_use_id; Claude lifecycle names retained.
 - Codex: turn_id maps to the canonical prompt ID. apply_patch header paths support multiple file associations. Nonzero shell exits still use PostToolUse. No-op hook output is `{}`, including Stop. Paths declared in a patch establish association, not proof that the patch applied.
@@ -21,77 +89,9 @@ python3 demo.py /tmp/sylp-codex-fixture --host codex
 python3 demo.py /tmp/sylp-cursor-fixture --host cursor
 ```
 
-Each demo produces its own history.html and synthetic-hooks.json. These are real file edits through simulated events, not real agent chats. Generate examples locally; captured databases and HTML exports are not committed. The tests include native payload normalization, two-file patches, failed shell writes, delayed completion, session isolation, duplicate posts and exact hook command execution from generated bundles.
+Each demo produces its own history.html and synthetic-hooks.json. These are real file edits through simulated events, not real agent chats. Generate examples locally; captured databases and HTML exports are not committed. The tests include native payload normalization, two-file patches, failed shell writes, delayed completion, session isolation, duplicate posts, plugin packaging integrity, the evolution timeline, and exact hook command execution from the committed plugin directories.
 
-## Local integration trial, not performed here
-
-Use only a disposable repository, never sensitive or employer code. Review the capture policy below first. Initialize explicitly using the selected bundle's recorder:
-
-```sh
-python3 /absolute/path/to/dist/HOST/recorder.py init /absolute/path/to/disposable-repo --accept-local-capture
-```
-
-The default database supports ONE repository. Set `SYLP_PROVENANCE_DB` to a separate absolute path OUTSIDE that repository for each test; keep it set for both initialization and the CLI process.
-
-- Claude trial: `claude --plugin-dir /absolute/path/to/dist/claude`
-- Cursor trial: `agent --plugin-dir /absolute/path/to/dist/cursor`
-- Codex bundle: prepared with .codex-plugin/plugin.json and hooks/hooks.json. No Codex local-plugin loading command has been exercised here. Use the installed version's supported local plugin workflow and review/trust hooks in `/hooks`. As an alternative, a reviewed project .codex/hooks.json can call the bundle's recorder via an absolute path. Do not overwrite existing project hooks or bypass hook trust.
-
-First check CLI version, available loading flags and account/billing status. No plan, credentials or paid usage is included or authorized by this package. A real integration test still needs the user-selected account/plan and confirmation of any quota or charge use.
-
-Render from the same selected database with `python3 recorder.py render /tmp/history.html`. No plugin registration, marketplace action, account login, repository push or publication is performed by these build scripts.
-
-## Step-by-step Mac trial (Cursor first)
-
-Concrete commands for a first live check on a Mac with Python 3.10+ and git. This expands the "Local integration trial" section above; the same capture policy and warnings apply. Not yet exercised on a real Cursor CLI.
-
-1. Get the code and build the bundles:
-
-```sh
-git clone -b experiment/code-provenance-adapters https://github.com/seanbenhur/sylp.git ~/sylp-prov
-cd ~/sylp-prov/experiments/provenance
-python3 --version   # needs 3.10+
-python3 build_bundles.py
-```
-
-Optional sanity check: `python3 -m unittest discover -s tests`
-
-2. Make a throwaway repo (never sensitive or employer code):
-
-```sh
-mkdir ~/prov-test && cd ~/prov-test
-git init && echo "print('hi')" > a.py && git add . && git commit -m init
-```
-
-3. Opt in to local capture, in the same terminal you will use for the CLI:
-
-```sh
-export SYLP_PROVENANCE_DB=$HOME/prov-cursor.db
-python3 ~/sylp-prov/experiments/provenance/dist/cursor/recorder.py init ~/prov-test --accept-local-capture
-```
-
-The default database supports ONE repository; keep `SYLP_PROVENANCE_DB` set for both init and the CLI process, and use a separate path per test.
-
-4. Check `agent --version` and your plan/billing status before any prompt, then launch:
-
-```sh
-cd ~/prov-test && agent --plugin-dir ~/sylp-prov/experiments/provenance/dist/cursor
-```
-
-5. Give it one small prompt that edits `a.py`, then render:
-
-```sh
-python3 ~/sylp-prov/experiments/provenance/dist/cursor/recorder.py render ~/history.html
-```
-
-Open `~/history.html` in a browser.
-
-Caveats for this trial:
-
-- `agent --plugin-dir` comes from Cursor's CLI docs and has not been run here. If your version rejects it, keep the exact error and `agent --version` output.
-- The step 5 prompt uses your own Cursor quota/billing; whether to spend it is your call.
-- Captured text stays local and unencrypted, which is why the repo must be a throwaway.
-- Codex needs different setup: no verified local-plugin load command exists yet, so follow the Codex notes under "Local integration trial" until a verified flow replaces them.
+`build_bundles.py` still generates the older `dist/` bundles and remains covered by tests, but the committed `plugins/` directories are the install path; no build step is needed.
 
 ## Remaining validation gates
 
@@ -103,7 +103,7 @@ Experimental code, based on sylp main `ca79119`. No changes to the existing harn
 
 ## What works in the included fixture
 
-A stdlib Python recorder stores hook boundaries and content-addressed text-file snapshots in SQLite. Each historical diff links to its prompt ID, recorded prompt and final assistant response when supplied. A self-contained HTML viewer supports filtering by filename and expanding boundary evidence. It makes no network or model calls and creates no repository commits.
+A stdlib Python recorder stores hook boundaries and content-addressed text-file snapshots in SQLite. Each historical diff links to its prompt ID, recorded prompt and final assistant response when supplied. A self-contained HTML viewer supports filtering by filename, expanding boundary evidence, and the repository evolution timeline. It makes no network or model calls and creates no repository commits.
 
 The demo modifies real files, sending synthetic Claude Code-style payloads through a fresh recorder process for each event. It is not a recorded Claude conversation. The core tests cover duplicate tool events, overlap, manual changes, failed-tool writes, restart state, edit/revert, exclusions, oversized files, rename handling, HTML escaping, pause and repository isolation.
 
@@ -120,7 +120,7 @@ Open `/tmp/sylp-provenance-example/history.html`. The output contains local fixt
 
 ## Pause and deletion
 
-Run the selected bundle's recorder with `pause` to stop new capture or `enable` to resume. This does not erase history. To delete history, close all recorder processes and remove the database and its `-wal` / `-shm` siblings. Delete HTML exports separately. Earlier snapshots remain after a source file is removed. No secure-erasure guarantee.
+Run the selected plugin's recorder with `pause` to stop new capture or `enable` to resume. This does not erase history. To delete history, close all recorder processes and remove the database and its `-wal` / `-shm` siblings. Delete HTML exports separately. Earlier snapshots remain after a source file is removed. No secure-erasure guarantee.
 
 ## Evidence labels
 
@@ -130,13 +130,13 @@ Run the selected bundle's recorder with `pause` to stop new capture or `enable` 
 - **Unattributed:** a change was observed outside a matching tool window.
 - **Capture gap:** a file is no longer eligible for capture, not a verified deletion.
 
-Rename currently appears as deletion plus addition. The viewer shows historical file diffs, not present-day line blame. Prompt-to-edit evidence is based on IDs provided by the host; missing IDs mean missing associations, not guessed ones.
+Rename currently appears as deletion plus addition. The viewer shows historical file diffs, not present-day line blame. Prompt-to-edit evidence is based on IDs provided by the host; missing IDs mean missing associations, not guessed ones. Commit labels in the evolution timeline describe timing relative to recorded windows, never proven authorship.
 
 ## Privacy and missing coverage
 
 Repository opt-in authorizes local capture of submitted prompts and eligible code. Prompt text and code can contain secrets. Filename exclusions are NOT a complete secret scanner. Do not use this on sensitive repositories yet. Captured text is stored unencrypted, with restrictive file permissions. There is no remote service, telemetry or upload.
 
-Git-ignored untracked files are excluded, plus selected credential names/directories/extensions, symlinks, binary/non-UTF8 files, files over 128KiB and snapshots over 8MiB or 2000 candidate files. Already tracked files remain candidates even if later ignored, except explicit exclusions. Capture errors are printed to stderr and do not block Claude. There is no durable error dashboard or reconciliation after an unobserved failure yet.
+Git-ignored untracked files are excluded, plus selected credential names/directories/extensions, symlinks, binary/non-UTF8 files, files over 128KiB and snapshots over 8MiB or 2000 candidate files. Already tracked files remain candidates even if later ignored, except explicit exclusions. Capture errors are printed to stderr and do not block the host agent. There is no durable error dashboard or reconciliation after an unobserved failure yet.
 
 Only hook-supplied submitted prompts, final assistant text and selected metadata are captured. Full transcript import, intermediate assistant messages, full tool input/output, tests-as-evidence, transcript reconciliation, automatic file watching, subagent identity display, retention/quotas, search across prompts, current-line mapping, sharing/sync and restore are NOT implemented. Edits and reversions wholly inside one tool window can be missed. Background work, concurrent sessions and manual changes can be only temporally associated. The plugin observes work; it does not execute, resume or control the host agent.
 
@@ -150,15 +150,16 @@ Reviewed 23 November 2026:
 - https://code.claude.com/docs/en/hooks
 - https://code.claude.com/docs/en/plugins/components
 
-This independently written experiment implements a small provenance slice. It does not copy Delta's UI/assets, use DeltaDB, or claim Delta compatibility/parity.
+Plugin packaging, hooks and marketplace references reviewed 24 November 2026:
 
-## Additional adapter references
-
-Read 23 November 2026:
-- https://learn.chatgpt.com/docs/hooks
+- https://cursor.com/docs/plugins
+- https://cursor.com/docs/reference/plugins
 - https://cursor.com/docs/hooks
-- https://cursor.com/docs/cli/changelog
 - https://cursor.com/docs/cli/reference/parameters
-- https://cursor.com/docs/plugins/building
+- https://learn.chatgpt.com/docs/hooks
+- https://learn.chatgpt.com/docs/plugins
+- https://developers.openai.com/plugins/build/plugins
 
-Use the separate dist/HOST bundle and host-specific guidance above for any trial.
+Adjacent open-source projects seen 24 November 2026 (single-host each): https://github.com/thisalihassan/promptrail, https://github.com/gauravkrp/git-for-prompts.
+
+This independently written experiment implements a small provenance slice. It does not copy Delta's UI/assets, use DeltaDB, or claim Delta compatibility/parity.
