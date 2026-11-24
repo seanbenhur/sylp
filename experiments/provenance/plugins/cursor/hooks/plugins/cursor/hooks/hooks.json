@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/recorder.py\" hook --host cursor",
+        "timeout": 15
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/recorder.py\" hook --host cursor",
+        "timeout": 15
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/recorder.py\" hook --host cursor",
+        "timeout": 15
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/recorder.py\" hook --host cursor",
+        "timeout": 15
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/recorder.py\" hook --host cursor",
+        "timeout": 15
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/recorder.py\" hook --host cursor",
+        "timeout": 15
+      }
+    ],
+    "stop": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/recorder.py\" hook --host cursor",
+        "timeout": 15
+      }
+    ],
+    "sessionEnd": [
+      {
+        "command": "python3 \"${CURSOR_PLUGIN_ROOT}/recorder.py\" hook --host cursor",
+        "timeout": 15
+      }
+    ]
+  }
+}
