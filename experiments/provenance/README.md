@@ -50,6 +50,8 @@ python3 ~/sylp-prov/experiments/provenance/recorder.py render ~/history.html
 
 Open `~/history.html`. The render command is host-independent; it reads only the local database and the repository's git history.
 
+**Let your agent test it.** Paste [TESTING-AGENT-PROMPT.md](TESTING-AGENT-PROMPT.md) into your agent: it installs the plugin into a throwaway repo, runs one small recorded prompt, renders the history page and reports pass or fail with exact errors. It states the quota cost first and waits for your go-ahead. The same steps ship as a skill at [skills/sylp-provenance-test/SKILL.md](skills/sylp-provenance-test/SKILL.md).
+
 Trial caveats:
 
 - The first prompt you give uses your own plan/quota with that host. Whether to spend it is your call. Check `agent --version` / `codex --version` / `claude --version` and your plan first.
