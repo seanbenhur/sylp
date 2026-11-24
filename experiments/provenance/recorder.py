@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Private provenance spike. Python stdlib only; never runs model/tool commands."""
 import argparse
+import datetime
 import difflib
 import hashlib
 import html
@@ -204,6 +205,76 @@ def record(db, data):
     return True
 
 
+def git_history(root):
+    """Commits and branches read from git at render time; never recorded by hooks."""
+    try:
+        log = subprocess.run(['git', '-C', str(root), 'log', '--all', '--pretty=format:%H%x00%aI%x00%D%x00%s'],
+                             capture_output=True, check=True)
+        refs = subprocess.run(['git', '-C', str(root), 'for-each-ref', 'refs/heads', '--format=%(refname:short)'],
+                              capture_output=True, check=True)
+    except (subprocess.CalledProcessError, OSError):
+        return [], []
+    commits = []
+    for line in os.fsdecode(log.stdout).splitlines():
+        parts = line.split('\x00')
+        if len(parts) >= 4 and parts[0]:
+            try:
+                at = datetime.datetime.fromisoformat(parts[1]).timestamp()
+            except ValueError:
+                continue
+            commits.append({'hash': parts[0], 'at': at, 'refs': parts[2], 'subject': parts[3]})
+    return commits, sorted(b for b in os.fsdecode(refs.stdout).splitlines() if b)
+
+
+def evolution(db):
+    """Vertical timeline: recorded prompts/tool windows/changes plus git commits, unknowns labeled."""
+    esc = lambda s: html.escape(str(s or ''))
+    root = meta(db, 'root')
+    commits, branches = git_history(root) if root else ([], [])
+    rows = db.execute('SELECT at,kind,session,prompt,tool,body FROM events ORDER BY at').fetchall()
+    windows, open_windows, sessions = {}, {}, {}
+    for r in rows:
+        if r['kind'] == 'PreToolUse':
+            open_windows[r['tool'] or str(r['at'])] = r['at']
+        elif r['kind'] in {'PostToolUse', 'PostToolUseFailure'} and r['tool'] in open_windows:
+            windows[open_windows.pop(r['tool'])] = r['at']
+        elif r['kind'] == 'SessionStart':
+            sessions.setdefault(r['session'], [r['at'], None])[0] = r['at']
+        elif r['kind'] == 'SessionEnd':
+            sessions.setdefault(r['session'], [None, r['at']])[1] = r['at']
+    items = []
+    for r in rows:
+        body = json.loads(r['body'] or '{}')
+        if r['kind'] == 'UserPromptSubmit' and body.get('prompt'):
+            items.append((r['at'], 'prompt', 'Prompt: ' + esc(body['prompt'])))
+        elif r['kind'] == 'PreToolUse':
+            target = ', '.join(body.get('file_paths') or []) or 'no declared file'
+            items.append((r['at'], 'tool', 'Tool window opens: ' + esc(body.get('tool_name') or 'unknown tool') + ' (' + esc(target) + ')'))
+    for r in db.execute('SELECT id,event,path,evidence FROM changes ORDER BY id').fetchall():
+        row = db.execute('SELECT at FROM events WHERE id=?', (r['event'],)).fetchone()
+        at = row[0] if row else 0
+        items.append((at + 0.001, 'change', '<a href="#change-' + str(r['id']) + '">' + esc(r['path']) + '</a> changed (' + esc(r['evidence']) + ')'))
+    for c in commits:
+        inside = any(start <= c['at'] <= end for start, end in windows.items())
+        in_session = any((s[0] or 0) <= c['at'] <= (s[1] or float('inf')) for s in sessions.values())
+        if inside:
+            label = 'inside a recorded tool window: possibly agent-made, not proven'
+        elif in_session:
+            label = 'during a recorded session, outside tool windows'
+        else:
+            label = 'outside recorded agent sessions'
+        ref = ' <small>' + esc(c['refs']) + '</small>' if c['refs'] else ''
+        items.append((c['at'], 'commit', 'Commit <code>' + esc(c['hash'][:8]) + '</code>' + ref + ' ' + esc(c['subject']) + ' <small>' + esc(label) + '</small>'))
+    items.sort(key=lambda item: item[0], reverse=True)
+    dots = {'prompt': '#3a6ea5', 'tool': '#8a938e', 'change': '#3f7d54', 'commit': '#6b4fa1'}
+    lis = ''.join('<li class="' + kind + '"><span class="dot" style="background:' + dots[kind] + '"></span><time>' +
+                  datetime.datetime.fromtimestamp(at).strftime('%Y-%m-%d %H:%M:%S') + '</time> ' + text + '</li>'
+                  for at, kind, text in items)
+    note = ('Branches at render time: ' + esc(', '.join(branches)) + '. ' if branches else '') + \
+           'Commits come from git when this page was rendered, not from hook records. A commit inside a tool window is possibly agent-made, not proven.'
+    return '<h2>How this repository evolved</h2><p>' + note + '</p><ul class="evo">' + (lis or '<li>Nothing recorded yet.</li>') + '</ul>'
+
+
 def render(db, output):
     esc = lambda s: html.escape(str(s or ''))
     rows = db.execute('SELECT c.*,e.kind,e.session,e.prompt,e.body FROM changes c LEFT JOIN events e ON c.event=e.id ORDER BY c.id').fetchall()
@@ -214,13 +285,13 @@ def render(db, output):
         prompt_text = json.loads(prompt[0]).get('prompt') if prompt else None
         answer = db.execute("SELECT body FROM events WHERE session=? AND prompt=? AND kind IN ('Stop','AssistantResponse') AND json_extract(body,'$.last_assistant_message') IS NOT NULL ORDER BY at DESC LIMIT 1", (r['session'],r['prompt'])).fetchone() if r['prompt'] else None
         answer_text = json.loads(answer[0]).get('last_assistant_message') if answer else None
-        cards.append('<article data-path="'+esc(r['path'])+'"><header><span class="badge">'+esc(r['evidence'])+'</span><h2>'+esc(r['path'])+'</h2><small>CHANGE '+str(r['id'])+' / '+esc(body.get('host','claude'))+' / '+esc(r['kind'])+' / prompt '+esc((r['prompt'] or 'unknown')[:12])+'</small></header><p class="prompt">'+esc(prompt_text or 'No prompt captured for this change.')+'</p><details><summary>Recorded assistant response for this prompt</summary><p>'+esc(answer_text or 'No final assistant response captured.')+'</p></details><details open><summary>Recorded code change</summary><pre>'+esc(r['patch'])+'</pre></details><details><summary>Recorded boundary evidence</summary><pre>'+esc(json.dumps(body,indent=2))+'</pre><p>Before '+esc(r['before_hash'] or 'absent')+'<br>After '+esc(r['after_hash'] or 'absent')+'</p></details></article>')
+        cards.append('<article id="change-'+str(r['id'])+'" data-path="'+esc(r['path'])+'"><header><span class="badge">'+esc(r['evidence'])+'</span><h2>'+esc(r['path'])+'</h2><small>CHANGE '+str(r['id'])+' / '+esc(body.get('host','claude'))+' / '+esc(r['kind'])+' / prompt '+esc((r['prompt'] or 'unknown')[:12])+'</small></header><p class="prompt">'+esc(prompt_text or 'No prompt captured for this change.')+'</p><details><summary>Recorded assistant response for this prompt</summary><p>'+esc(answer_text or 'No final assistant response captured.')+'</p></details><details open><summary>Recorded code change</summary><pre>'+esc(r['patch'])+'</pre></details><details><summary>Recorded boundary evidence</summary><pre>'+esc(json.dumps(body,indent=2))+'</pre><p>Before '+esc(r['before_hash'] or 'absent')+'<br>After '+esc(r['after_hash'] or 'absent')+'</p></details></article>')
     events = db.execute('SELECT kind,body FROM events ORDER BY at').fetchall()
     timeline = ''.join('<details><summary>'+esc(r['kind'])+'</summary><pre>'+esc(json.dumps(json.loads(r['body']),indent=2))+'</pre></details>' for r in events)
     gaps = db.execute('SELECT gaps FROM snapshots ORDER BY id DESC LIMIT 1').fetchone()
     gaps_text = '\n'.join(json.loads(gaps[0])) if gaps else ''
-    page = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>Sylp / Recorded code history</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}p{line-height:1.6}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.layout{display:grid;grid-template-columns:240px 1fr;gap:24px}aside{position:sticky;top:20px;align-self:start}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px}article{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 24px;overflow:hidden}article header{padding:20px 24px 12px}h2{margin:12px 0 4px;font:600 20px monospace;overflow-wrap:anywhere}small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}.prompt{padding:0 24px;color:#204f43}details{border-top:1px solid #e1e7e3;padding:14px 24px}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}aside p{font-size:13px;color:#5a6b65}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.layout{display:block}aside{position:static;margin-bottom:20px}article header,details{padding:16px}.prompt{padding:0 16px}}</style><main><div class="eyebrow">SYLP / PRIVATE PROVENANCE SPIKE</div><h1>From code change to conversation.</h1><p>Inspect the prompt and tool boundary recorded around a file change. Evidence first. Unknowns stay unknown.</p><div class="notice">Experimental local recording. This is not a verified live agent session. Claude, Codex and Cursor hook simulations drive real file changes in the included fixture. Tool-linked means temporal and named-file evidence, not guaranteed authorship.</div><div class="layout"><aside><label for="filter">Find a file</label><p><input id="filter" placeholder="e.g. retry.py"></p><p>Changes are immutable historical diffs. They do not follow today's line numbers after rewrites or rebases.</p><p>Nothing is uploaded by the recorder. This exported HTML contains captured code and prompt text. Treat it as private.</p><details><summary>Capture policy gaps</summary><pre>GAPS</pre></details></aside><section>CARDS</section></div><h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured in this spike. Full transcript import and inline message-to-hunk navigation are not implemented.</p>TIMELINE<footer>Local SQLite + content-addressed snapshots. No model calls, telemetry, remote assets or repository commits.</footer></main><script>document.getElementById('filter').addEventListener('input',e=>{for(const a of document.querySelectorAll('article'))a.hidden=!a.dataset.path.toLowerCase().includes(e.target.value.toLowerCase())})</script></html>'''
-    page = page.replace('GAPS',esc(gaps_text or 'No policy gaps reported in last snapshot.')).replace('CARDS',''.join(cards) or '<p>No file changes captured.</p>').replace('TIMELINE',timeline)
+    page = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>Sylp / Recorded code history</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}p{line-height:1.6}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.layout{display:grid;grid-template-columns:240px 1fr;gap:24px}aside{position:sticky;top:20px;align-self:start}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px}article{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 24px;overflow:hidden}article header{padding:20px 24px 12px}h2{margin:12px 0 4px;font:600 20px monospace;overflow-wrap:anywhere}small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}.prompt{padding:0 24px;color:#204f43}details{border-top:1px solid #e1e7e3;padding:14px 24px}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}aside p{font-size:13px;color:#5a6b65}.evo{list-style:none;padding:0 0 0 10px;border-left:2px solid #d5ded8;margin:16px 0 32px}.evo li{position:relative;padding:6px 0 6px 18px;font-size:14px}.evo .dot{position:absolute;left:-7px;top:13px;width:10px;height:10px;border-radius:50%}.evo time{font:11px monospace;color:#5a6b65;margin-right:8px}.evo code{font:12px monospace}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.layout{display:block}aside{position:static;margin-bottom:20px}article header,details{padding:16px}.prompt{padding:0 16px}}</style><main><div class="eyebrow">SYLP / PRIVATE PROVENANCE SPIKE</div><h1>From code change to conversation.</h1><p>Inspect the prompt and tool boundary recorded around a file change. Evidence first. Unknowns stay unknown.</p><div class="notice">Experimental local recording. This is not a verified live agent session. Claude, Codex and Cursor hook simulations drive real file changes in the included fixture. Tool-linked means temporal and named-file evidence, not guaranteed authorship.</div><div class="layout"><aside><label for="filter">Find a file</label><p><input id="filter" placeholder="e.g. retry.py"></p><p>Changes are immutable historical diffs. They do not follow today's line numbers after rewrites or rebases.</p><p>Nothing is uploaded by the recorder. This exported HTML contains captured code and prompt text. Treat it as private.</p><details><summary>Capture policy gaps</summary><pre>GAPS</pre></details></aside><section>CARDS</section></div>EVOLUTION<h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured in this spike. Full transcript import and inline message-to-hunk navigation are not implemented.</p>TIMELINE<footer>Local SQLite + content-addressed snapshots. No model calls, telemetry, remote assets or repository commits.</footer></main><script>document.getElementById('filter').addEventListener('input',e=>{for(const a of document.querySelectorAll('article'))a.hidden=!a.dataset.path.toLowerCase().includes(e.target.value.toLowerCase())})</script></html>'''
+    page = page.replace('GAPS',esc(gaps_text or 'No policy gaps reported in last snapshot.')).replace('CARDS',''.join(cards) or '<p>No file changes captured.</p>').replace('EVOLUTION',evolution(db)).replace('TIMELINE',timeline)
     target = Path(output)
     target.write_text(page)
     target.chmod(0o600)
