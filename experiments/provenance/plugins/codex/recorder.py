@@ -7,6 +7,7 @@ import hashlib
 import html
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
 import subprocess
@@ -59,6 +60,25 @@ def setmeta(db, key, value):
 def gitroot(cwd):
     result = subprocess.run(['git', '-C', str(cwd), 'rev-parse', '--show-toplevel'], capture_output=True, check=True)
     return Path(os.fsdecode(result.stdout).strip()).resolve()
+
+def default_db_for(root):
+    """Per-repository capture database, so one install can record across repos."""
+    digest = hashlib.sha1(str(root).encode()).hexdigest()[:12]
+    return Path.home() / '.sylp-provenance' / 'repos' / (Path(str(root)).name + '-' + digest + '.sqlite3')
+
+def resolve_db(given, hint):
+    """Precedence: --db flag, SYLP_PROVENANCE_DB env, per-repo path from a repo hint, legacy default."""
+    if given:
+        return Path(given).expanduser()
+    env = os.environ.get('SYLP_PROVENANCE_DB')
+    if env:
+        return Path(env).expanduser()
+    if hint:
+        try:
+            return default_db_for(gitroot(hint))
+        except Exception:
+            pass
+    return Path.home() / '.sylp-provenance' / 'history.sqlite3'
 
 
 def allowed(relative):
@@ -208,7 +228,7 @@ def record(db, data):
 def git_history(root):
     """Commits and branches read from git at render time; never recorded by hooks."""
     try:
-        log = subprocess.run(['git', '-C', str(root), 'log', '--all', '--pretty=format:%H%x00%aI%x00%D%x00%s'],
+        log = subprocess.run(['git', '-C', str(root), 'log', '--all', '--pretty=format:%H%x00%aI%x00%D%x00%s%x00%an'],
                              capture_output=True, check=True)
         refs = subprocess.run(['git', '-C', str(root), 'for-each-ref', 'refs/heads', '--format=%(refname:short)'],
                               capture_output=True, check=True)
@@ -222,7 +242,8 @@ def git_history(root):
                 at = datetime.datetime.fromisoformat(parts[1]).timestamp()
             except ValueError:
                 continue
-            commits.append({'hash': parts[0], 'at': at, 'refs': parts[2], 'subject': parts[3]})
+            commits.append({'hash': parts[0], 'at': at, 'refs': parts[2], 'subject': parts[3],
+                            'author': parts[4] if len(parts) > 4 else ''})
     return commits, sorted(b for b in os.fsdecode(refs.stdout).splitlines() if b)
 
 
@@ -235,12 +256,48 @@ def thread_ordinals(db):
     return ords
 
 
+def usage_block(db, total_commits):
+    """What the hooks can honestly count. Token and cost data are not in hook payloads."""
+    esc = lambda s: html.escape(str(s or ''))
+    sessions = db.execute("SELECT count(DISTINCT session) FROM events WHERE kind='SessionStart'").fetchone()[0]
+    prompts = db.execute("SELECT count(*) FROM events WHERE kind='UserPromptSubmit'").fetchone()[0]
+    tools = db.execute("SELECT json_extract(body,'$.tool_name') AS n, count(*) AS c FROM events "
+                       "WHERE kind='PreToolUse' GROUP BY n ORDER BY c DESC").fetchall()
+    changes = db.execute('SELECT count(*) FROM changes').fetchone()[0]
+    span = db.execute('SELECT min(at), max(at) FROM events').fetchone()
+    tool_text = ', '.join((str(t['n'] or 'unknown') + ' ' + str(t['c'])) for t in tools) or 'none'
+    when = ''
+    if span and span[0]:
+        fmt = '%d %b %Y %H:%M'
+        when = ('; ' + datetime.datetime.fromtimestamp(span[0]).strftime(fmt)
+                + ' to ' + datetime.datetime.fromtimestamp(span[1]).strftime(fmt))
+    return ('<p class="summary">Recorded usage: ' + str(sessions) + ' session' + ('s' if sessions != 1 else '')
+            + ', ' + str(prompts) + ' prompt' + ('s' if prompts != 1 else '')
+            + ', tool calls: ' + esc(tool_text)
+            + ', ' + str(changes) + ' recorded change' + ('s' if changes != 1 else '')
+            + ', ' + str(total_commits) + ' commit' + ('s' if total_commits != 1 else '') + ' at render time'
+            + esc(when) + '. Token counts and cost are not exposed by host hooks, so they are not shown.</p>')
+
 def evolution(db):
     """SVG graph: prompts, tool windows and changes on the conversation lane, commits alongside."""
     esc = lambda s: html.escape(str(s or ''))
     root = meta(db, 'root')
     commits, branches = git_history(root) if root else ([], [])
     rows = db.execute('SELECT id,at,kind,session,prompt,tool,body FROM events ORDER BY at').fetchall()
+    commits.sort(key=lambda c: c['at'])
+    hidden = 0
+    MAX_COMMITS = 25
+    if len(commits) > MAX_COMMITS:
+        if rows:
+            t0, t1 = rows[0]['at'] - 3600, rows[-1]['at'] + 3600
+            core = [c for c in commits if t0 <= c['at'] <= t1]
+            before = [c for c in commits if c['at'] < t0][-5:]
+            after = [c for c in commits if c['at'] > t1][:5]
+            keep = before + core + after
+        else:
+            keep = commits[-15:]
+        hidden = len(commits) - len(keep)
+        commits = keep
     ords = thread_ordinals(db)
     windows, open_windows, sessions = [], {}, {}
     for r in rows:
@@ -282,7 +339,8 @@ def evolution(db):
             in_session = any((s[0] or 0) <= c['at'] <= (s[1] or float('inf')) for s in sessions.values())
             label = 'during a recorded session, outside tool windows' if in_session else 'outside recorded agent sessions'
         entries.append({'at': c['at'], 'lane': 1, 'kind': 'commit', 'key': ('commit', c['hash']),
-                        'label': c['hash'][:8] + ' ' + c['subject'] + ((' [' + c['refs'] + ']') if c['refs'] else ''),
+                        'label': c['hash'][:8] + ' ' + c['subject'] + ((' - ' + c['author']) if c.get('author') else '')
+                                 + ((' [' + c['refs'] + ']') if c['refs'] else ''),
                         'sub': label, 'parent': parent})
     colors = {'prompt': '#3a6ea5', 'tool': '#8a938e', 'change': '#3f7d54', 'commit': '#6b4fa1'}
     lane_x = [70, 560]
@@ -330,9 +388,11 @@ def evolution(db):
               '<span style="color:#3f7d54">&#9679;</span> recorded change &nbsp;'
               '<span style="color:#6b4fa1">&#9679;</span> git commit</p>')
     note = ('<p>' + (('Branches at render time: ' + esc(', '.join(branches)) + '. ') if branches else '')
-            + 'Commits are read from git when this page was rendered, not from hook records. '
-            'A commit inside a tool window is possibly agent-made, not proven. '
-            'Click a prompt or change node to jump to its thread below.</p>')
+            + 'Commits are read from git when this page was rendered, not from hook records, with their git author. '
+            'A commit inside a tool window is possibly agent-made, not proven; a commit by anyone whose session was '
+            'not recorded here is outside recorded sessions, whatever its author. '
+            + ((str(hidden) + ' older commits not shown. ') if hidden else '')
+            + 'Click a prompt or change node to jump to its thread below.</p>')
     empty = ''
     if not has_conversation:
         empty = ('<div class="notice"><strong>No recorded agent activity yet.</strong> The hooks did not fire in a live '
@@ -341,7 +401,7 @@ def evolution(db):
     return '<h2 id="graph">How this repository evolved</h2>' + note + legend + svg + empty
 
 
-def render(db, output):
+def build_page(db):
     esc = lambda s: html.escape(str(s or ''))
     ords = thread_ordinals(db)
     rows = db.execute('SELECT c.*,e.kind,e.session,e.prompt,e.body FROM changes c LEFT JOIN events e ON c.event=e.id ORDER BY c.id').fetchall()
@@ -389,36 +449,137 @@ def render(db, output):
     timeline = ''.join('<details><summary>' + esc(r['kind']) + '</summary><pre>' + esc(json.dumps(json.loads(r['body']), indent=2)) + '</pre></details>' for r in events)
     gaps = db.execute('SELECT gaps FROM snapshots ORDER BY id DESC LIMIT 1').fetchone()
     gaps_text = '\n'.join(json.loads(gaps[0])) if gaps else ''
-    page = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>Sylp / How this code came to be</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:960px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}h2{margin:28px 0 8px;font-size:24px}h3{margin:10px 0 4px;font:600 17px monospace;overflow-wrap:anywhere}p{line-height:1.6}.summary{color:#5a6b65}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.legend{font-size:13px;color:#5a6b65}svg{display:block;max-width:100%;height:auto;background:white;border:1px solid #d5ded8;border-radius:10px;margin:8px 0 16px}a{text-decoration:none}.thread{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 22px;padding:18px 20px}.bubble{max-width:82%;padding:10px 14px;border-radius:12px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}.bubble.user{background:#e3ecf7}.bubble.agent{background:#e7efe9}.muted{color:#7d8a83;font-size:14px}.change{border-top:1px solid #e1e7e3;margin-top:10px;padding-top:8px}article.change header small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}details{border-top:1px solid #e1e7e3;padding:10px 0}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px;margin:6px 0 14px}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.bubble{max-width:100%}}</style><main><div class="eyebrow">SYLP / PRIVATE PROVENANCE SPIKE</div><h1>How this code came to be.</h1><p>Every recorded change, connected to the prompt and tool action behind it. Evidence first. Unknowns stay unknown.</p>SUMMARY<div class="notice">Experimental local recording. This is not a verified live agent session. Tool-linked means temporal and named-file evidence, not guaranteed authorship. Nothing here is uploaded.</div>EVOLUTION<h2 id="threads">The conversations behind the changes</h2><label for="filter">Find a file</label><input id="filter" placeholder="e.g. retry.py">THREADSUNLINKED<h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured in this spike. Full transcript import and inline message-to-hunk navigation are not implemented.</p>TIMELINE<details><summary>Capture policy gaps</summary><pre>GAPS</pre></details><footer>Local SQLite + content-addressed snapshots. No model calls, telemetry, remote assets or repository commits. This exported HTML contains captured code and prompt text; treat it as private.</footer></main><script>document.getElementById('filter').addEventListener('input',e=>{for(const a of document.querySelectorAll('.change'))a.hidden=!a.dataset.path.toLowerCase().includes(e.target.value.toLowerCase())})</script></html>'''
+    page = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>Sylp / How this code came to be</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:960px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}h2{margin:28px 0 8px;font-size:24px}h3{margin:10px 0 4px;font:600 17px monospace;overflow-wrap:anywhere}p{line-height:1.6}.summary{color:#5a6b65}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.legend{font-size:13px;color:#5a6b65}svg{display:block;max-width:100%;height:auto;background:white;border:1px solid #d5ded8;border-radius:10px;margin:8px 0 16px}a{text-decoration:none}.thread{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 22px;padding:18px 20px}.bubble{max-width:82%;padding:10px 14px;border-radius:12px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}.bubble.user{background:#e3ecf7}.bubble.agent{background:#e7efe9}.muted{color:#7d8a83;font-size:14px}.change{border-top:1px solid #e1e7e3;margin-top:10px;padding-top:8px}article.change header small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}details{border-top:1px solid #e1e7e3;padding:10px 0}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px;margin:6px 0 14px}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.bubble{max-width:100%}}</style><main><div class="eyebrow">SYLP / PRIVATE PROVENANCE SPIKE</div><h1>How this code came to be.</h1><p>Every recorded change, connected to the prompt and tool action behind it. Evidence first. Unknowns stay unknown.</p>SUMMARYUSAGE<div class="notice">Experimental local recording. This is not a verified live agent session. Tool-linked means temporal and named-file evidence, not guaranteed authorship. Nothing here is uploaded.</div>EVOLUTION<h2 id="threads">The conversations behind the changes</h2><label for="filter">Find a file</label><input id="filter" placeholder="e.g. retry.py">THREADSUNLINKED<h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured in this spike. Full transcript import and inline message-to-hunk navigation are not implemented.</p>TIMELINE<details><summary>Capture policy gaps</summary><pre>GAPS</pre></details><footer>Local SQLite + content-addressed snapshots. No model calls, telemetry, remote assets or repository commits. This exported HTML contains captured code and prompt text; treat it as private.</footer></main><script>document.getElementById('filter').addEventListener('input',e=>{for(const a of document.querySelectorAll('.change'))a.hidden=!a.dataset.path.toLowerCase().includes(e.target.value.toLowerCase())})</script></html>'''
     page = (page.replace('SUMMARY', summary)
+                .replace('USAGE', usage_block(db, len(commits)))
                 .replace('EVOLUTION', evolution(db))
                 .replace('THREADS', ''.join(threads_html) or '<p class="muted">No recorded conversations yet.</p>')
                 .replace('UNLINKED', ('<h3>Changes without a recorded prompt</h3>' + unlinked) if unlinked else '')
                 .replace('TIMELINE', timeline)
                 .replace('GAPS', esc(gaps_text or 'No policy gaps reported in last snapshot.')))
+    return page
+
+def render(db, output):
     target = Path(output)
-    target.write_text(page)
+    target.write_text(build_page(db))
     target.chmod(0o600)
+
+def serve(directory, port):
+    """Read-only, localhost-only live view over every capture database in a directory."""
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    directory = Path(directory).expanduser()
+
+    def load():
+        found = []
+        for path in sorted(directory.rglob('*.sqlite3')):
+            try:
+                db = sqlite3.connect('file:' + str(path) + '?mode=ro', uri=True)
+                db.row_factory = sqlite3.Row
+                found.append((path, meta(db, 'root'), db))
+            except Exception:
+                continue
+        return found
+
+    esc = lambda s: html.escape(str(s or ''))
+
+    class Handler(BaseHTTPRequestHandler):
+        def send_html(self, text):
+            body = text.encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            dbs = load()
+            if self.path == '/':
+                items = []
+                for i, (path, root, db) in enumerate(dbs):
+                    try:
+                        prompts = db.execute("SELECT count(*) FROM events WHERE kind='UserPromptSubmit'").fetchone()[0]
+                        changes = db.execute('SELECT count(*) FROM changes').fetchone()[0]
+                    except Exception:
+                        prompts = changes = 0
+                    items.append('<li><a href="/repo/' + str(i) + '">' + esc(root or path.name) + '</a> '
+                                 '<span class="muted">' + str(prompts) + ' prompts, ' + str(changes) + ' changes</span></li>')
+                listing = ''.join(items) or ('<li class="muted">No capture databases in ' + esc(str(directory))
+                                             + ' yet. Run install.py or recorder.py init first.</li>')
+                self.send_html('<!doctype html><html lang="en"><meta charset="utf-8"><meta http-equiv="refresh" content="10">'
+                               '<meta name="viewport" content="width=device-width,initial-scale=1"><title>Sylp serve</title>'
+                               '<style>body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}'
+                               'main{max-width:760px;margin:auto;padding:44px 24px}h1{font-size:32px;letter-spacing:-.03em}'
+                               'li{margin:10px 0}a{color:#1d5158}.muted{color:#7d8a83;font-size:14px}</style>'
+                               '<main><div style="font:12px monospace;letter-spacing:.12em;color:#486a60">SYLP / PRIVATE PROVENANCE SPIKE</div>'
+                               '<h1>Recorded repositories</h1>'
+                               '<p class="muted">Read-only local view, auto-refreshes every 10s. Nothing leaves this machine.</p>'
+                               '<ul>' + listing + '</ul></main></html>')
+                return
+            m = re.match(r'^/repo/(\d+)$', self.path)
+            if m and int(m.group(1)) < len(dbs):
+                path, _root, db = dbs[int(m.group(1))]
+                page = build_page(db)
+                page = page.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="refresh" content="10">', 1)
+                page = page.replace('</main>', '<p class="muted"><a href="/">All recorded repositories</a> &middot; served read-only from '
+                                    + esc(str(path)) + '</p></main>', 1)
+                self.send_html(page)
+                return
+            self.send_response(404)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(('127.0.0.1', port), Handler)
+    url = 'http://127.0.0.1:' + str(port) + '/'
+    print('Serving read-only provenance view at ' + url + ' (Ctrl+C to stop)')
+    try:
+        import webbrowser
+        webbrowser.open(url)
+    except Exception:
+        pass
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--db', default=os.environ.get('SYLP_PROVENANCE_DB', str(Path.home()/'.sylp-provenance'/'history.sqlite3')))
+    parser.add_argument('--db', default=None,
+                        help='capture database path; default is a per-repository database under ~/.sylp-provenance/repos/')
     sub = parser.add_subparsers(dest='action', required=True)
     init = sub.add_parser('init'); init.add_argument('repo'); init.add_argument('--accept-local-capture',action='store_true',required=True)
     hook = sub.add_parser('hook'); hook.add_argument('--host', choices=['claude','codex','cursor'], default='claude')
     show = sub.add_parser('render'); show.add_argument('output')
+    srv = sub.add_parser('serve'); srv.add_argument('--dir', default=str(Path.home()/'.sylp-provenance')); srv.add_argument('--port', type=int, default=8777)
     sub.add_parser('pause'); sub.add_parser('enable')
     args = parser.parse_args()
-    db = connect(args.db)
+    if args.action == 'serve':
+        serve(args.dir, args.port)
+        return
+    if args.action == 'hook':
+        raw = sys.stdin.buffer.read(1024*1024+1)
+        if len(raw)>1024*1024: raise ValueError('Hook payload too large')
+        from adapters import normalize
+        data = normalize(args.host, json.loads(raw))
+        db = connect(str(resolve_db(args.db, data.get('cwd'))))
+        try:
+            record(db, data)
+        finally:
+            db.close()
+        print('{}')  # Valid no-op hook response, including Codex Stop
+        return
+    hint = args.repo if args.action == 'init' else os.getcwd()
+    db = connect(str(resolve_db(args.db, hint)))
     try:
         if args.action == 'init': initialize(db,args.repo)
-        elif args.action == 'hook':
-            raw = sys.stdin.buffer.read(1024*1024+1)
-            if len(raw)>1024*1024: raise ValueError('Hook payload too large')
-            from adapters import normalize
-            record(db,normalize(args.host,json.loads(raw)))
-            print('{}')  # Valid no-op hook response, including Codex Stop
-        elif args.action == 'render': render(db,args.output)
+        elif args.action == 'render':
+            if not meta(db, 'root'):
+                repos_dir = Path.home()/'.sylp-provenance'/'repos'
+                available = sorted(repos_dir.glob('*.sqlite3')) if repos_dir.exists() else []
+                suffix = ('; available databases: ' + ', '.join(str(p) for p in available)) if available else ''
+                raise SystemExit('This database has no recorded repository. Run render from inside the recorded repo, or pass --db' + suffix)
+            render(db,args.output)
         else: setmeta(db,'enabled', '0' if args.action=='pause' else '1')
     finally: db.close()
 
