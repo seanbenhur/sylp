@@ -2,10 +2,6 @@
 
 Local-first code provenance for AI coding agents. Click a change and see the prompt and tool action behind it. One plugin works with Claude Code, Codex CLI and Cursor CLI. Everything stays on your machine; nothing is uploaded.
 
-## Status
-
-Public experiment. Fixture-tested (39 checks, simulated hook payloads driving real file edits), **not yet verified in a live CLI session**. Use it in a disposable repository. Captured text stays local and unencrypted.
-
 ## What it looks like
 
 ![Summary of a recorded session: prompts, tool calls, changes and commits](examples/screenshot-summary.svg)
@@ -15,6 +11,19 @@ Public experiment. Fixture-tested (39 checks, simulated hook payloads driving re
 ![Thread: the prompt, agent reply, diff and evidence label for one change](examples/screenshot-thread.svg)
 
 These screenshots are of the synthetic demo fixture ([examples/history.html](examples/history.html)), not a live agent session.
+
+## A real run: fixing a bug in openclaw/openclaw
+
+![Provenance graph from a live Claude Code session in a clone of openclaw/openclaw](examples/openclaw-run-graph.png)
+
+This is the exported `history.html` after a live Claude Code session in a clone of [openclaw/openclaw](https://github.com/openclaw/openclaw), where the agent fixed a CLI bug. The graph shows 4 recorded prompts, the Bash, Read and Edit tool windows around them (including edits to `models-cli.ts` and its test), and the git commit found at render time.
+
+What this screenshot does and does not show:
+
+- It shows the prompt and tool-call record from a real session.
+- It reports **0 recorded changes**. On this run the per-event file snapshot hit its 2000-file cap (the repo has over 66000 files), so the edited files never reached a snapshot and no diff was attributed. The page says so: tool-linked means temporal and named-file evidence, not guaranteed authorship. The recorder now also diffs the files a tool call declares past the cap; that fix is covered by a fixture test and has not been re-run live on openclaw.
+- The commit in the graph was made outside the recorded sessions.
+- Token counts and cost are not exposed by host hooks, so none are shown.
 
 ## Install
 
