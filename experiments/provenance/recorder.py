@@ -49,6 +49,53 @@ def connect(path):
     ''')
     return db
 
+"""Private provenance spike. Python stdlib only; never runs model/tool commands."""
+import argparse
+import datetime
+import difflib
+import hashlib
+import html
+import json
+import os
+from pathlib import Path
+import sqlite3
+import subprocess
+import sys
+import time
+
+MAX_FILE = 128 * 1024
+MAX_TOTAL = 8 * 1024 * 1024
+DENY_NAMES = {'.env', '.netrc', '.npmrc', '.pypirc', 'credentials', 'auth.json', 'id_rsa', 'id_ed25519'}
+DENY_PARTS = {'.git', '.sylp', '.claude', '.ssh', '.aws', '.gnupg', 'node_modules', '__pycache__'}
+DENY_SUFFIX = {'.pem', '.key', '.p12', '.pfx', '.sqlite', '.sqlite3', '.db'}
+
+
+def digest(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def connect(path):
+    path = Path(path).expanduser().resolve()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    old = os.umask(0o077)
+    try:
+        db = sqlite3.connect(path, timeout=10, isolation_level=None)
+    finally:
+        os.umask(old)
+    os.chmod(path, 0o600)
+    db.row_factory = sqlite3.Row
+    db.executescript('''
+    PRAGMA journal_mode=WAL;
+    PRAGMA synchronous=FULL;
+    CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, at REAL, kind TEXT, session TEXT, prompt TEXT, tool TEXT, body TEXT);
+    CREATE TABLE IF NOT EXISTS blobs(hash TEXT PRIMARY KEY, content TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS snapshots(id INTEGER PRIMARY KEY, event TEXT, files TEXT, gaps TEXT);
+    CREATE TABLE IF NOT EXISTS pending(tool TEXT PRIMARY KEY, event TEXT, path TEXT, overlap INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS changes(id INTEGER PRIMARY KEY, event TEXT, path TEXT, before_hash TEXT, after_hash TEXT, evidence TEXT, patch TEXT);
+    ''')
+    return db
+
 
 def meta(db, key, default=None):
     row = db.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone()
