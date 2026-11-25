@@ -11,8 +11,8 @@ This test uses the user's paid plan quota TWICE: once for this session, once for
 - `python3 --version` is 3.10 or newer.
 - `git --version` works.
 - `agent status` shows a logged-in Cursor account.
-- Find the plugin source. If `~/sylp` exists, run `cd ~/sylp && git pull` and confirm the branch `experiment/code-provenance-adapters` is checked out (`git branch --show-current`). If `~/sylp` does not exist, clone it:
-  `git clone -b experiment/code-provenance-adapters https://github.com/seanbenhur/sylp.git ~/sylp`
+- Find the plugin source. If `~/sylp` exists, run `cd ~/sylp && git checkout main && git pull`. If `~/sylp` does not exist, clone it:
+  `git clone https://github.com/seanbenhur/sylp.git ~/sylp`
 - Confirm `~/sylp/experiments/provenance/install.py` exists.
 
 ## 2. Install into a throwaway repo
