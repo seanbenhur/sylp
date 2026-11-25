@@ -543,6 +543,256 @@ def serve(directory, port):
     except KeyboardInterrupt:
         pass
 
+
+def git_blob_id(text):
+    """The git SHA-1 blob id for file content, so recorded snapshots can be matched to commits exactly."""
+    raw = text.encode('utf-8', 'replace')
+    return hashlib.sha1(b'blob ' + str(len(raw)).encode() + b'\x00' + raw).hexdigest()
+
+
+def git_text(root, args):
+    result = subprocess.run(['git', '-C', str(root)] + args, capture_output=True)
+    if result.returncode != 0:
+        return None
+    return os.fsdecode(result.stdout)
+
+
+def commit_subject(root, commit):
+    out = git_text(root, ['show', '-s', '--format=%ct%x00%an%x00%s', commit])
+    if not out:
+        return None
+    stamp, author, subject = (out.strip().split('\x00') + ['', '', ''])[:3]
+    return {'hash': commit, 'at': float(stamp or 0), 'author': author, 'subject': subject}
+
+
+def prompt_text_for(db, prompt_id):
+    row = db.execute("SELECT body FROM events WHERE kind='UserPromptSubmit' AND (prompt=? OR id=?) "
+                     'ORDER BY at DESC LIMIT 1', (prompt_id, prompt_id)).fetchone()
+    return json.loads(row[0]).get('prompt') if row else None
+
+
+def tool_name_for(db, tool_id):
+    row = db.execute("SELECT body FROM events WHERE kind='PreToolUse' AND tool=? LIMIT 1", (tool_id,)).fetchone()
+    return json.loads(row[0]).get('tool_name') if row else None
+
+
+def answer_text_for(db, session, prompt_id):
+    row = db.execute("SELECT body FROM events WHERE session=? AND prompt=? AND kind IN ('Stop','AssistantResponse') "
+                     "AND json_extract(body,'$.last_assistant_message') IS NOT NULL ORDER BY at DESC LIMIT 1",
+                     (session, prompt_id)).fetchone()
+    return json.loads(row[0]).get('last_assistant_message') if row else None
+
+
+def describe_change(db, row):
+    return {'change_id': row['id'], 'evidence': row['evidence'], 'path': row['path'],
+            'prompt': prompt_text_for(db, row['prompt']) if row['prompt'] else None,
+            'tool': tool_name_for(db, row['tool']) if row['tool'] else None,
+            'assistant': answer_text_for(db, row['session'], row['prompt']) if row['prompt'] else None}
+
+
+def changes_for_path(db, rel):
+    return db.execute('SELECT c.id,c.event,c.path,c.after_hash,c.evidence,e.at,e.tool,e.prompt,e.session '
+                      'FROM changes c LEFT JOIN events e ON c.event=e.id WHERE c.path=? ORDER BY c.id', (rel,)).fetchall()
+
+
+def match_change_to_blob(db, rel, blob_id):
+    """Exact content match between a recorded change's after-snapshot and a git blob. None when no exact match."""
+    if not blob_id:
+        return None
+    for row in changes_for_path(db, rel):
+        if row['after_hash'] and git_blob_id(textfor(db, row['after_hash'])) == blob_id:
+            return row
+    return None
+
+
+def blame_commit(root, rel, line):
+    out = git_text(root, ['blame', '--porcelain', '-L', str(line) + ',' + str(line), '--', rel])
+    if not out or not out.strip():
+        return None
+    commit = out.split(' ', 1)[0]
+    return None if set(commit) == {'0'} else commit
+
+
+def why_lookup(db, root, path, line=None):
+    """Answer 'why is this here' for a file or line: exact commit-to-prompt match when the content allows it."""
+    root = Path(root).resolve()
+    rel = os.path.relpath(str(Path(path).resolve()), str(root)) if os.path.isabs(str(path)) else str(path)
+    caveats = ['Evidence labels describe recorded association, not proven authorship.',
+               'Matching compares recorded snapshot content to git blobs (SHA-1 repos only).']
+    result = {'path': rel, 'line': line, 'matched': 'none', 'caveats': caveats}
+    if line is not None:
+        commit = blame_commit(root, rel, line)
+        if commit is None:
+            result['reason'] = 'line is uncommitted or outside git history; nothing to attribute'
+            return result
+    else:
+        out = git_text(root, ['log', '-1', '--format=%H', '--', rel])
+        commit = out.strip() if out and out.strip() else None
+        if commit is None:
+            result['reason'] = 'path is not in git history; nothing to attribute'
+            return result
+    result['commit'] = commit_subject(root, commit)
+    blob = git_text(root, ['rev-parse', commit + ':' + rel])
+    blob = blob.strip() if blob else None
+    if blob is None:
+        caveats.append('the path was deleted in this commit, so no blob exists to match')
+    hit = match_change_to_blob(db, rel, blob)
+    if hit:
+        result.update(describe_change(db, hit))
+        result['matched'] = 'exact'
+        return result
+    # Git timestamps have 1-second resolution, so allow slack before calling a recorded change "earlier".
+    prior = [r for r in changes_for_path(db, rel) if r['at'] and result['commit'] and r['at'] <= result['commit']['at'] + 120]
+    if prior:
+        result.update(describe_change(db, prior[-1]))
+        result['matched'] = 'nearest'
+        caveats.append('no recorded change produced this exact content; showing the nearest earlier recorded change on this path')
+        return result
+    result['reason'] = ('no recorded session produced this exact content'
+                        + ('' if changes_for_path(db, rel) else ' and no recorded change exists for this path'))
+    return result
+
+
+def pr_summary(db, root, base, head='HEAD', include_prompts=True):
+    """Markdown provenance summary for a commit range: evidence per changed file, honest flags for gaps."""
+    root = Path(root).resolve()
+    span = base + '..' + head
+    names = git_text(root, ['diff', '--name-status', base, head])
+    if names is None:
+        raise SystemExit('git diff failed for range ' + span + '; check the refs')
+    lines = ['# PR provenance: ' + span, '',
+             '> Recorded evidence from this machine only. Prompt text below is private capture: review it before '
+             'posting, and re-run with --no-prompts to redact. Evidence labels describe recorded association, '
+             'not proven authorship.', '']
+    flagged, linked = [], 0
+    for entry in names.strip().splitlines():
+        if not entry.strip():
+            continue
+        parts = entry.split('\t')
+        status, rel = parts[0], parts[-1]
+        hits = []
+        log = git_text(root, ['log', '--format=%H', span, '--', rel])
+        for commit in (log.strip().splitlines() if log else []):
+            blob = git_text(root, ['rev-parse', commit + ':' + rel])
+            row = match_change_to_blob(db, rel, blob.strip() if blob else None)
+            if row and row not in [h[1] for h in hits]:
+                hits.append((commit, row))
+        lines.append('## ' + rel + ' (' + status + ')')
+        if hits:
+            linked += 1
+            for commit, row in hits:
+                info = describe_change(db, row)
+                lines.append('- ' + (commit_subject(root, commit) or {}).get('subject', commit)[:60]
+                             + ' - evidence: ' + str(info['evidence']))
+                if info.get('tool'):
+                    lines.append('  - tool: ' + str(info['tool']))
+                prompt = info.get('prompt')
+                if prompt:
+                    prompt = prompt if include_prompts else '[redacted: run without --no-prompts to include prompt text]'
+                    lines.append('  - prompt: ' + prompt.replace(chr(10), ' ')[:300])
+                elif row['prompt'] is None:
+                    lines.append('  - recorded change without a prompt association: ' + str(info['evidence']))
+        else:
+            flagged.append(rel)
+            lines.append('- NO RECORDED PROMPT for this file in ' + span
+                         + '. It was written outside recorded sessions (or capture was off). Review it manually.')
+        lines.append('')
+    lines.append('---')
+    lines.append(str(linked) + ' file(s) with recorded evidence, ' + str(len(flagged))
+                 + ' file(s) without. Files without recorded evidence are not necessarily human-written; '
+                   'capture may simply not have seen them.')
+    return '\n'.join(lines) + '\n'
+
+
+MCP_TOOLS = [
+    {'name': 'why',
+     'description': 'Why is this file or line here: the recorded prompt, tool action and evidence label behind it. '
+                    'Matches recorded snapshots to git blobs exactly; reports "none" instead of guessing.',
+     'inputSchema': {'type': 'object', 'properties': {
+         'path': {'type': 'string', 'description': 'file path, absolute or relative to the repo'},
+         'line': {'type': 'integer', 'description': 'optional 1-based line number'},
+         'repo': {'type': 'string', 'description': 'repository root; defaults to the server working directory'}},
+         'required': ['path']}},
+    {'name': 'pr_summary',
+     'description': 'Markdown provenance summary for a commit range: per changed file, the recorded prompt and '
+                    'evidence label, with explicit flags for files with no recorded prompt. Contains private prompt '
+                    'text unless include_prompts is false; review before posting anywhere.',
+     'inputSchema': {'type': 'object', 'properties': {
+         'base': {'type': 'string', 'description': 'base ref, e.g. main'},
+         'head': {'type': 'string', 'description': 'head ref, default HEAD'},
+         'repo': {'type': 'string', 'description': 'repository root; defaults to the server working directory'},
+         'include_prompts': {'type': 'boolean', 'description': 'include recorded prompt text; default true'}},
+         'required': ['base']}}]
+
+
+def mcp_reply(msg_id, result=None, error=None):
+    out = {'jsonrpc': '2.0', 'id': msg_id}
+    if error:
+        out['error'] = error
+    else:
+        out['result'] = result
+    return out
+
+
+def mcp_call(arguments, which):
+    repo = arguments.get('repo') or os.getcwd()
+    db_path = resolve_db(None, repo)
+    if not db_path.exists():
+        return {'content': [{'type': 'text', 'text': 'No sylp provenance database for ' + str(repo)
+                            + ' (looked for ' + str(db_path) + '). Run recorder.py init for that repo first.'}],
+                'isError': True}
+    db = connect(str(db_path))
+    try:
+        if which == 'why':
+            text = json.dumps(why_lookup(db, repo, arguments['path'], arguments.get('line')), indent=2)
+        else:
+            text = pr_summary(db, repo, arguments['base'], arguments.get('head') or 'HEAD',
+                              arguments.get('include_prompts', True))
+    except Exception as exc:
+        return {'content': [{'type': 'text', 'text': 'sylp-provenance ' + which + ' failed: '
+                            + type(exc).__name__ + ': ' + str(exc)}], 'isError': True}
+    finally:
+        db.close()
+    return {'content': [{'type': 'text', 'text': text}]}
+
+
+def mcp_main():
+    """Minimal MCP stdio server: newline-delimited JSON-RPC, stdlib only."""
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            sys.stdout.write(json.dumps(mcp_reply(None, error={'code': -32700, 'message': 'parse error'})) + '\n')
+            sys.stdout.flush()
+            continue
+        method = msg.get('method', '')
+        msg_id = msg.get('id')
+        if msg_id is None:  # notification, e.g. notifications/initialized
+            continue
+        if method == 'initialize':
+            resp = mcp_reply(msg_id, {'protocolVersion': '2024-11-05',
+                                      'capabilities': {'tools': {'listChanged': False}},
+                                      'serverInfo': {'name': 'sylp-provenance', 'version': '0.1.0'}})
+        elif method == 'ping':
+            resp = mcp_reply(msg_id, {})
+        elif method == 'tools/list':
+            resp = mcp_reply(msg_id, {'tools': MCP_TOOLS})
+        elif method == 'tools/call':
+            params = msg.get('params') or {}
+            name = params.get('name', '')
+            if name in ('why', 'pr_summary'):
+                resp = mcp_reply(msg_id, mcp_call(params.get('arguments') or {}, name))
+            else:
+                resp = mcp_reply(msg_id, error={'code': -32602, 'message': 'unknown tool: ' + name})
+        else:
+            resp = mcp_reply(msg_id, error={'code': -32601, 'message': 'method not found: ' + method})
+        sys.stdout.write(json.dumps(resp) + '\n')
+        sys.stdout.flush()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--db', default=None,
@@ -553,7 +803,15 @@ def main():
     show = sub.add_parser('render'); show.add_argument('output')
     srv = sub.add_parser('serve'); srv.add_argument('--dir', default=str(Path.home()/'.sylp-provenance')); srv.add_argument('--port', type=int, default=8777)
     sub.add_parser('pause'); sub.add_parser('enable')
+    why = sub.add_parser('why'); why.add_argument('path'); why.add_argument('--line', type=int, default=None)
+    why.add_argument('--repo', default='.'); why.add_argument('--json', action='store_true')
+    pr = sub.add_parser('pr-summary'); pr.add_argument('base'); pr.add_argument('head', nargs='?', default='HEAD')
+    pr.add_argument('--repo', default='.'); pr.add_argument('--no-prompts', action='store_true')
+    sub.add_parser('mcp')
     args = parser.parse_args()
+    if args.action == 'mcp':
+        mcp_main()
+        return
     if args.action == 'serve':
         serve(args.dir, args.port)
         return
@@ -569,10 +827,24 @@ def main():
             db.close()
         print('{}')  # Valid no-op hook response, including Codex Stop
         return
-    hint = args.repo if args.action == 'init' else os.getcwd()
+    hint = args.repo if args.action in ('init', 'why', 'pr-summary') else os.getcwd()
     db = connect(str(resolve_db(args.db, hint)))
     try:
         if args.action == 'init': initialize(db,args.repo)
+        elif args.action == 'why':
+            found = why_lookup(db, args.repo, args.path, args.line)
+            if args.json:
+                print(json.dumps(found, indent=2))
+            else:
+                print(found['matched'] + ': ' + found['path'] + ((' line ' + str(found['line'])) if found['line'] else ''))
+                if found.get('commit'): print('commit ' + found['commit']['hash'][:8] + ' ' + found['commit']['subject'])
+                if found.get('evidence'): print('evidence: ' + str(found['evidence']))
+                if found.get('tool'): print('tool: ' + str(found['tool']))
+                if found.get('prompt'): print('prompt: ' + str(found['prompt']))
+                if found.get('reason'): print(found['reason'])
+                for note in found['caveats']: print('note: ' + note)
+        elif args.action == 'pr-summary':
+            sys.stdout.write(pr_summary(db, args.repo, args.base, args.head, not args.no_prompts))
         elif args.action == 'render':
             if not meta(db, 'root'):
                 repos_dir = Path.home()/'.sylp-provenance'/'repos'
