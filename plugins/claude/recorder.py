@@ -246,7 +246,7 @@ def git_history(root):
         parts = line.split('\x00')
         if len(parts) >= 4 and parts[0]:
             try:
-                at = datetime.datetime.fromisoformat(parts[1]).timestamp()
+                at = datetime.datetime.fromisoformat(parts[1].replace('Z', '+00:00')).timestamp()
             except ValueError:
                 continue
             commits.append({'hash': parts[0], 'at': at, 'refs': parts[2], 'subject': parts[3],
