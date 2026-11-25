@@ -1,4 +1,17 @@
-# Sylp
+# Sylp provenance: see how your code came to be
+
+Local-first code provenance for AI coding agents. Click a change and see the prompt and tool action behind it. One plugin works with Claude Code, Codex CLI and Cursor CLI. Everything stays on your machine; nothing is uploaded.
+
+```sh
+claude plugin marketplace add seanbenhur/sylp
+claude plugin install sylp-provenance@sylp-provenance
+```
+
+Status: public experiment, fixture-tested (39 checks), not yet verified in a live CLI session. Install paths for Cursor and Codex, usage, and honest limits: [experiments/provenance](experiments/provenance/README.md).
+
+---
+
+# Sylp harness
 
 **A standalone coding harness for work that takes more than one prompt.**
 
@@ -213,10 +226,6 @@ Provider requests allow up to 15 minutes for a response by default. Set `SYLP_RE
 The worktree keeps changes isolated from your current checkout. Shell commands can additionally be sandboxed (see [docs/extensions.md](docs/extensions.md)), but that confinement is best-effort: review commands before approving them, use repositories you trust, and inspect the report and diff before merging. Sylp records model-reported checks but does not independently validate them.
 
 See the [comparison protocol](benchmarks/PROTOCOL.md) for a reproducible Sylp vs. Codex evaluation. Sylp has not been shown to outperform Codex until that protocol has been run and its results published.
-
-## Experiments
-
-- [Provenance](experiments/provenance/README.md) - see how your code came to be: a local-first plugin for Claude Code, Codex CLI and Cursor CLI that links each change to the prompt and tool action behind it. Experimental, fixture-tested.
 
 ## Documentation
 
