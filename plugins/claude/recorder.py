@@ -86,13 +86,17 @@ def allowed(relative):
     return not (set(p.parts) & DENY_PARTS or p.name.lower() in DENY_NAMES or p.name.lower().startswith('.env.') or p.suffix.lower() in DENY_SUFFIX or 'secret' in p.name.lower() or 'credential' in p.name.lower())
 
 
-def scan(db, root):
+def scan(db, root, include=None):
     result = subprocess.run(['git', '-C', str(root), 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], capture_output=True, check=True)
     files, gaps, total = {}, [], 0
     names = sorted(set(os.fsdecode(result.stdout).split('\0')) - {''})
     if len(names) > 2000:
         gaps.append('Repository has more than 2000 candidate files; remaining files not captured.')
-    for name in names[:2000]:
+    wanted = names[:2000]
+    # Declared tool files and anything captured before are always diffed, even past the cap.
+    extras = sorted((set(include or ()) | set(previous(db))) - set(wanted))
+    extra_only = set(extras)
+    for name in wanted + extras:
         rel = Path(name)
         if not allowed(name):
             gaps.append(name + ': excluded by capture policy')
@@ -121,7 +125,7 @@ def scan(db, root):
             files[name] = sha
         except (OSError, UnicodeError) as exc:
             gaps.append(name + ': unreadable or non-UTF8 (' + type(exc).__name__ + ')')
-    return files, gaps
+    return files, gaps, extra_only & set(files)
 
 
 def previous(db):
@@ -133,15 +137,18 @@ def textfor(db, sha):
     return db.execute('SELECT content FROM blobs WHERE hash=?', (sha,)).fetchone()[0] if sha else ''
 
 
-def snapshot(db, event, evidence='unattributed', target=None):
+def snapshot(db, event, evidence='unattributed', target=None, include=None):
     root = Path(meta(db, 'root'))
     before = previous(db)
-    after, gaps = scan(db, root)
+    after, gaps, entered = scan(db, root, include=include)
     for name in sorted(before.keys() | after.keys()):
         old, new = before.get(name), after.get(name)
         if old == new:
             continue
-        label = evidence if target is None or name in target else 'ambiguous: changed outside named file during tool window'
+        if old is None and name in entered:
+            label = 'capture gap: file entered the capture set at this event; before-content not recorded'
+        else:
+            label = evidence if target is None or name in target else 'ambiguous: changed outside named file during tool window'
         # An omitted file is not a verified deletion.
         if new is None and (root / name).exists():
             label = 'capture gap: file no longer eligible, not a verified deletion'
@@ -159,7 +166,7 @@ def initialize(db, cwd):
     with transaction(db):
         setmeta(db, 'root', root)
         setmeta(db, 'enabled', '1')
-        files, gaps = scan(db, root)
+        files, gaps, _ = scan(db, root)
         db.execute('INSERT INTO snapshots(event,files,gaps) VALUES(?,?,?)', ('baseline', json.dumps(files), json.dumps(gaps)))
 
 
@@ -194,7 +201,6 @@ def record(db, data):
         if db.execute('SELECT 1 FROM events WHERE id=?', (event,)).fetchone(): return False
         db.execute('INSERT INTO events VALUES(?,?,?,?,?,?,?)', (event, time.time(), kind, session, prompt, tool, json.dumps(body)))
         if kind == 'PreToolUse':
-            snapshot(db, event, 'unattributed: observed before tool started')
             targets = []
             for value in body['file_paths']:
                 try:
@@ -202,6 +208,7 @@ def record(db, data):
                     if not candidate.is_absolute(): candidate=Path(data['cwd'])/candidate
                     targets.append(str(candidate.resolve().relative_to(Path(meta(db,'root')))))
                 except ValueError: pass
+            snapshot(db, event, 'unattributed: observed before tool started', include=targets)
             target = json.dumps(targets) if targets else None
             overlap = bool(db.execute('SELECT 1 FROM pending').fetchone())
             if overlap: db.execute('UPDATE pending SET overlap=1')
@@ -217,7 +224,7 @@ def record(db, data):
                 label = 'tool-linked: declared file changed in observed tool window'
             else:
                 label, target = 'associated: changed during tool window, causality unproven', None
-            snapshot(db,event,label,target)
+            snapshot(db,event,label,target, include=target)
             db.execute('DELETE FROM pending WHERE tool=?', (tool,))
         else:
             pending = bool(db.execute('SELECT 1 FROM pending').fetchone())
@@ -449,8 +456,13 @@ def build_page(db):
     timeline = ''.join('<details><summary>' + esc(r['kind']) + '</summary><pre>' + esc(json.dumps(json.loads(r['body']), indent=2)) + '</pre></details>' for r in events)
     gaps = db.execute('SELECT gaps FROM snapshots ORDER BY id DESC LIMIT 1').fetchone()
     gaps_text = '\n'.join(json.loads(gaps[0])) if gaps else ''
-    page = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>Sylp / How this code came to be</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:960px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}h2{margin:28px 0 8px;font-size:24px}h3{margin:10px 0 4px;font:600 17px monospace;overflow-wrap:anywhere}p{line-height:1.6}.summary{color:#5a6b65}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.legend{font-size:13px;color:#5a6b65}svg{display:block;max-width:100%;height:auto;background:white;border:1px solid #d5ded8;border-radius:10px;margin:8px 0 16px}a{text-decoration:none}.thread{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 22px;padding:18px 20px}.bubble{max-width:82%;padding:10px 14px;border-radius:12px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}.bubble.user{background:#e3ecf7}.bubble.agent{background:#e7efe9}.muted{color:#7d8a83;font-size:14px}.change{border-top:1px solid #e1e7e3;margin-top:10px;padding-top:8px}article.change header small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}details{border-top:1px solid #e1e7e3;padding:10px 0}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px;margin:6px 0 14px}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.bubble{max-width:100%}}</style><main><div class="eyebrow">SYLP / PRIVATE PROVENANCE SPIKE</div><h1>How this code came to be.</h1><p>Every recorded change, connected to the prompt and tool action behind it. Evidence first. Unknowns stay unknown.</p>SUMMARYUSAGE<div class="notice">Experimental local recording. This is not a verified live agent session. Tool-linked means temporal and named-file evidence, not guaranteed authorship. Nothing here is uploaded.</div>EVOLUTION<h2 id="threads">The conversations behind the changes</h2><label for="filter">Find a file</label><input id="filter" placeholder="e.g. retry.py">THREADSUNLINKED<h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured in this spike. Full transcript import and inline message-to-hunk navigation are not implemented.</p>TIMELINE<details><summary>Capture policy gaps</summary><pre>GAPS</pre></details><footer>Local SQLite + content-addressed snapshots. No model calls, telemetry, remote assets or repository commits. This exported HTML contains captured code and prompt text; treat it as private.</footer></main><script>document.getElementById('filter').addEventListener('input',e=>{for(const a of document.querySelectorAll('.change'))a.hidden=!a.dataset.path.toLowerCase().includes(e.target.value.toLowerCase())})</script></html>'''
-    page = (page.replace('SUMMARY', summary)
+    page = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>REPOTITLE</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:960px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}h2{margin:28px 0 8px;font-size:24px}h3{margin:10px 0 4px;font:600 17px monospace;overflow-wrap:anywhere}p{line-height:1.6}.repo{font-size:18px;margin:0 0 14px}.repo strong{font-family:monospace}.summary{color:#5a6b65}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.legend{font-size:13px;color:#5a6b65}svg{display:block;max-width:100%;height:auto;background:white;border:1px solid #d5ded8;border-radius:10px;margin:8px 0 16px}a{text-decoration:none}.thread{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 22px;padding:18px 20px}.bubble{max-width:82%;padding:10px 14px;border-radius:12px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}.bubble.user{background:#e3ecf7}.bubble.agent{background:#e7efe9}.muted{color:#7d8a83;font-size:14px}.change{border-top:1px solid #e1e7e3;margin-top:10px;padding-top:8px}article.change header small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}details{border-top:1px solid #e1e7e3;padding:10px 0}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px;margin:6px 0 14px}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.bubble{max-width:100%}}</style><main><div class="eyebrow">SYLP / PRIVATE PROVENANCE SPIKE</div><h1>How this code came to be.</h1><p class="repo">Repository: <strong>REPONAME</strong> <span class="muted">REPOPATH</span></p><p>Every recorded change, connected to the prompt and tool action behind it. Evidence first. Unknowns stay unknown.</p>SUMMARYUSAGE<div class="notice">Experimental local recording. This is not a verified live agent session. Tool-linked means temporal and named-file evidence, not guaranteed authorship. Nothing here is uploaded.</div>EVOLUTION<h2 id="threads">The conversations behind the changes</h2><label for="filter">Find a file</label><input id="filter" placeholder="e.g. retry.py">THREADSUNLINKED<h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured in this spike. Full transcript import and inline message-to-hunk navigation are not implemented.</p>TIMELINE<details><summary>Capture policy gaps</summary><pre>GAPS</pre></details><footer>Local SQLite + content-addressed snapshots. No model calls, telemetry, remote assets or repository commits. This exported HTML contains captured code and prompt text; treat it as private.</footer></main><script>document.getElementById('filter').addEventListener('input',e=>{for(const a of document.querySelectorAll('.change'))a.hidden=!a.dataset.path.toLowerCase().includes(e.target.value.toLowerCase())})</script></html>'''
+    root = meta(db, 'root') or ''
+    repo_name = Path(root).name if root else 'unknown repository'
+    page = (page.replace('REPOTITLE', esc('Sylp / ' + repo_name + ' / How this code came to be'))
+                .replace('REPONAME', esc(repo_name))
+                .replace('REPOPATH', esc(root))
+                .replace('SUMMARY', summary)
                 .replace('USAGE', usage_block(db, len(commits)))
                 .replace('EVOLUTION', evolution(db))
                 .replace('THREADS', ''.join(threads_html) or '<p class="muted">No recorded conversations yet.</p>')
