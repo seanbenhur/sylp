@@ -11,7 +11,7 @@ Local-first code provenance: records each prompt and tool-call boundary on your 
 ## Install
 
 ```
-python3 experiments/provenance/install.py --host codex --marketplace
+python3 install.py --host codex --marketplace
 ```
 
 Then open `codex`, run `/plugins` to enable sylp-provenance, and `/hooks` to trust its hooks (Codex skips untrusted hooks).
