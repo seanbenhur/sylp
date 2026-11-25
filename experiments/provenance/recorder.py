@@ -203,6 +203,157 @@ def initialize(db, cwd):
 class transaction:
     def __init__(self, db): self.db = db
     def __enter__(self): self.db.execute('BEGIN IMMEDIATE')
+import difflib
+import hashlib
+import html
+import json
+import os
+from pathlib import Path
+import sqlite3
+import subprocess
+import sys
+import time
+
+MAX_FILE = 128 * 1024
+MAX_TOTAL = 8 * 1024 * 1024
+DENY_NAMES = {'.env', '.netrc', '.npmrc', '.pypirc', 'credentials', 'auth.json', 'id_rsa', 'id_ed25519'}
+DENY_PARTS = {'.git', '.sylp', '.claude', '.ssh', '.aws', '.gnupg', 'node_modules', '__pycache__'}
+DENY_SUFFIX = {'.pem', '.key', '.p12', '.pfx', '.sqlite', '.sqlite3', '.db'}
+
+
+def digest(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def connect(path):
+    path = Path(path).expanduser().resolve()
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    old = os.umask(0o077)
+    try:
+        db = sqlite3.connect(path, timeout=10, isolation_level=None)
+    finally:
+        os.umask(old)
+    os.chmod(path, 0o600)
+    db.row_factory = sqlite3.Row
+    db.executescript('''
+    PRAGMA journal_mode=WAL;
+    PRAGMA synchronous=FULL;
+    CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, at REAL, kind TEXT, session TEXT, prompt TEXT, tool TEXT, body TEXT);
+    CREATE TABLE IF NOT EXISTS blobs(hash TEXT PRIMARY KEY, content TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS snapshots(id INTEGER PRIMARY KEY, event TEXT, files TEXT, gaps TEXT);
+    CREATE TABLE IF NOT EXISTS pending(tool TEXT PRIMARY KEY, event TEXT, path TEXT, overlap INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS changes(id INTEGER PRIMARY KEY, event TEXT, path TEXT, before_hash TEXT, after_hash TEXT, evidence TEXT, patch TEXT);
+    ''')
+    return db
+
+
+def meta(db, key, default=None):
+    row = db.execute('SELECT value FROM meta WHERE key=?', (key,)).fetchone()
+    return row[0] if row else default
+
+
+def setmeta(db, key, value):
+    db.execute('INSERT OR REPLACE INTO meta VALUES(?,?)', (key, str(value)))
+
+
+def gitroot(cwd):
+    result = subprocess.run(['git', '-C', str(cwd), 'rev-parse', '--show-toplevel'], capture_output=True, check=True)
+    return Path(os.fsdecode(result.stdout).strip()).resolve()
+
+
+def allowed(relative):
+    p = Path(relative)
+    return not (set(p.parts) & DENY_PARTS or p.name.lower() in DENY_NAMES or p.name.lower().startswith('.env.') or p.suffix.lower() in DENY_SUFFIX or 'secret' in p.name.lower() or 'credential' in p.name.lower())
+
+
+def scan(db, root, include=None):
+    result = subprocess.run(['git', '-C', str(root), 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], capture_output=True, check=True)
+    files, gaps, total = {}, [], 0
+    names = sorted(set(os.fsdecode(result.stdout).split('\0')) - {''})
+    if len(names) > 2000:
+        gaps.append('Repository has more than 2000 candidate files; remaining files not captured.')
+    wanted = names[:2000]
+    # Declared tool files and anything captured before are always diffed, even past the cap.
+    extras = sorted((set(include or ()) | set(previous(db))) - set(wanted))
+    extra_only = set(extras)
+    for name in wanted + extras:
+        rel = Path(name)
+        if not allowed(name):
+            gaps.append(name + ': excluded by capture policy')
+            continue
+        p = root / rel
+        if rel.is_absolute() or '..' in rel.parts or any(parent.is_symlink() for parent in [p, *list(p.parents)[:len(rel.parts)-1]]):
+            gaps.append(name + ': symlink or unsafe path excluded')
+            continue
+        try:
+            if not p.exists():
+                continue
+            if not p.is_file() or p.stat().st_size > MAX_FILE:
+                gaps.append(name + ': non-file or file-size limit')
+                continue
+            raw = p.read_bytes()
+            if len(raw) > MAX_FILE or b'\0' in raw:
+                gaps.append(name + ': binary or file-size limit')
+                continue
+            text = raw.decode('utf-8')
+            total += len(raw)
+            if total > MAX_TOTAL:
+                gaps.append('Total snapshot byte limit reached; remaining files not captured.')
+                break
+            sha = digest(raw)
+            db.execute('INSERT OR IGNORE INTO blobs VALUES(?,?)', (sha, text))
+            files[name] = sha
+        except (OSError, UnicodeError) as exc:
+            gaps.append(name + ': unreadable or non-UTF8 (' + type(exc).__name__ + ')')
+    return files, gaps, extra_only & set(files)
+
+
+def previous(db):
+    row = db.execute('SELECT files FROM snapshots ORDER BY id DESC LIMIT 1').fetchone()
+    return json.loads(row[0]) if row else {}
+
+
+def textfor(db, sha):
+    return db.execute('SELECT content FROM blobs WHERE hash=?', (sha,)).fetchone()[0] if sha else ''
+
+
+def snapshot(db, event, evidence='unattributed', target=None, include=None):
+    root = Path(meta(db, 'root'))
+    before = previous(db)
+    after, gaps, entered = scan(db, root, include=include)
+    for name in sorted(before.keys() | after.keys()):
+        old, new = before.get(name), after.get(name)
+        if old == new:
+            continue
+        if old is None and name in entered:
+            label = 'capture gap: file entered the capture set at this event; before-content not recorded'
+        else:
+            label = evidence if target is None or name in target else 'ambiguous: changed outside named file during tool window'
+        # An omitted file is not a verified deletion.
+        if new is None and (root / name).exists():
+            label = 'capture gap: file no longer eligible, not a verified deletion'
+        patch = ''.join(difflib.unified_diff(textfor(db, old).splitlines(True), textfor(db, new).splitlines(True), fromfile='before/' + name, tofile='after/' + name))
+        db.execute('INSERT INTO changes(event,path,before_hash,after_hash,evidence,patch) VALUES(?,?,?,?,?,?)', (event, name, old, new, label, patch))
+    db.execute('INSERT INTO snapshots(event,files,gaps) VALUES(?,?,?)', (event, json.dumps(after), json.dumps(gaps)))
+
+
+def initialize(db, cwd):
+    root = gitroot(cwd)
+    if meta(db, 'root'):
+        if meta(db, 'root') != str(root):
+            raise ValueError('Database already belongs to another repository')
+        return
+    with transaction(db):
+        setmeta(db, 'root', root)
+        setmeta(db, 'enabled', '1')
+        files, gaps, _ = scan(db, root)
+        db.execute('INSERT INTO snapshots(event,files,gaps) VALUES(?,?,?)', ('baseline', json.dumps(files), json.dumps(gaps)))
+
+
+class transaction:
+    def __init__(self, db): self.db = db
+    def __enter__(self): self.db.execute('BEGIN IMMEDIATE')
     def __exit__(self, kind, value, tb): self.db.execute('ROLLBACK' if kind else 'COMMIT')
 
 
