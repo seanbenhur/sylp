@@ -822,6 +822,10 @@ def main():
         data = normalize(args.host, json.loads(raw))
         db = connect(str(resolve_db(args.db, data.get('cwd'))))
         try:
+            if not meta(db, 'root'):
+                # Installing the plugin is the opt-in: first hook in a repo initializes
+                # that repo's own database automatically. `pause` stops capture per repo.
+                initialize(db, gitroot(data.get('cwd', '.')))
             record(db, data)
         finally:
             db.close()
