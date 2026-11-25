@@ -16,8 +16,8 @@ python3 install.py --host codex --marketplace
 
 Then open `codex`, run `/plugins` to enable sylp-provenance, and `/hooks` to trust its hooks (Codex skips untrusted hooks).
 
-## Status
+## Support and privacy
 
-Experimental. 39 automated tests pass against fixtures; the hooks and MCP wiring are written from OpenAI's docs and have not yet been verified in a live Codex install. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted, so prefer throwaway repos until you trust it. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
+Tested against fixtures (44 automated tests). The hooks and MCP wiring follow OpenAI's docs and have not been run in a live Codex session yet. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
 
 License: Apache-2.0 (see the repository root).
