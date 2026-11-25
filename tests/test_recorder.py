@@ -22,6 +22,12 @@ class RecorderTests(unittest.TestCase):
         data=dict(cwd=str(self.root),session_id='session1',prompt_id=prompt_id,hook_event_name=kind,tool_use_id=tool,tool_name=name,tool_input={'file_path':str(self.file)})
         data.update(kw); return r.record(self.db,data)
     def labels(self): return [x[0] for x in self.db.execute('SELECT evidence FROM changes')]
+    def test_page_names_repository(self):
+        out=Path(self.tmp.name)/'h.html'; r.render(self.db,out)
+        page=out.read_text()
+        self.assertIn('Repository: <strong>repo</strong>',page)
+        self.assertIn('<title>Sylp / repo / How this code came to be</title>',page)
+        self.assertIn(str(self.root.resolve()) if str(self.root.resolve()) in page else str(self.root),page)
     def test_named_tool_and_prompt(self):
         self.hook('UserPromptSubmit',prompt_id='p1',**{'prompt':'Use three attempts'})
         self.hook('PreToolUse'); self.file.write_text('attempts = 3\n'); self.hook('PostToolUse')
@@ -75,6 +81,35 @@ class RecorderTests(unittest.TestCase):
     def test_oversized_file_gap(self):
         self.file.write_text('a'*(r.MAX_FILE+1)); self.hook('Stop')
         self.assertIn('capture gap',self.labels()[0])
+    def make_crowd(self, n=2100):
+        for i in range(n): (self.root/('f%04d.py' % i)).write_text('x = %d\n' % i)
+    def rebaseline(self):
+        self.db.close(); self.dbpath.unlink()
+        self.db=r.connect(self.dbpath); r.initialize(self.db,self.root)
+    def rows(self): return list(self.db.execute('SELECT path,evidence,before_hash,after_hash FROM changes'))
+    def test_declared_file_captured_beyond_scan_cap(self):
+        self.make_crowd(); self.rebaseline()
+        self.hook('UserPromptSubmit',prompt_id='p1',**{'prompt':'Bump attempts'})
+        self.hook('PreToolUse'); self.file.write_text('attempts = 3\n'); self.hook('PostToolUse')
+        linked=[x for x in self.rows() if x[1].startswith('tool-linked')]
+        self.assertEqual(len(linked),1); self.assertEqual(linked[0][0],'retry.py')
+    def test_cap_still_hides_undeclared_beyond_cap(self):
+        hidden=self.root/'zzz_hidden.py'; hidden.write_text('v = 1\n')
+        self.make_crowd(); self.rebaseline()
+        self.hook('Stop'); hidden.write_text('v = 2\n'); self.hook('Stop')
+        self.assertNotIn('zzz_hidden.py',[x[0] for x in self.rows()])
+    def test_no_gap_churn_after_declared_capture(self):
+        self.make_crowd(); self.rebaseline()
+        self.hook('PreToolUse'); self.file.write_text('attempts = 3\n'); self.hook('PostToolUse')
+        n=len(self.rows())
+        self.hook('Stop'); self.hook('Stop')
+        rows=self.rows(); self.assertEqual(len(rows),n)
+        self.assertFalse([x for x in rows if 'no longer eligible' in x[1]])
+    def test_declared_delete_beyond_cap_is_verified(self):
+        self.make_crowd(); self.rebaseline()
+        self.hook('PreToolUse',name='Bash'); self.file.unlink(); self.hook('PostToolUse',name='Bash')
+        deletes=[x for x in self.rows() if x[0]=='retry.py' and x[3] is None]
+        self.assertEqual(len(deletes),1); self.assertIsNotNone(deletes[0][2])
     def test_different_repo_rejected(self):
         other=Path(self.tmp.name)/'other'; other.mkdir(); subprocess.run(['git','init','-q',str(other)],check=True)
         with self.assertRaises(ValueError): self.hook('Stop',cwd=str(other))
