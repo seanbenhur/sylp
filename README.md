@@ -6,32 +6,53 @@ Local-first code provenance for AI coding agents. Click a change and see the pro
 
 Public experiment. Fixture-tested (39 checks, simulated hook payloads driving real file edits), **not yet verified in a live CLI session**. Use it in a disposable repository. Captured text stays local and unencrypted.
 
+## What it looks like
+
+![Summary of a recorded session: prompts, tool calls, changes and commits](examples/screenshot-summary.svg)
+
+![Graph: every recorded change connected to the prompt and tool window behind it](examples/screenshot-graph.svg)
+
+![Thread: the prompt, agent reply, diff and evidence label for one change](examples/screenshot-thread.svg)
+
+These screenshots are of the synthetic demo fixture ([examples/history.html](examples/history.html)), not a live agent session.
+
 ## Install
 
 **Claude Code** (native install, no clone):
 
-```sh
-claude plugin marketplace add seanbenhur/sylp
-claude plugin install sylp-provenance@sylp-provenance
-```
+1. Add the marketplace: `claude plugin marketplace add seanbenhur/sylp`
+2. Install the plugin: `claude plugin install sylp-provenance@sylp-provenance`
+3. Restart `claude` so the hooks load.
 
 **Cursor CLI** (`agent`): Cursor has no install command for local plugins, so copy the plugin folder once:
 
-```sh
-git clone https://github.com/seanbenhur/sylp.git
-cp -R sylp/plugins/cursor ~/.cursor/plugins/local/sylp-provenance
-```
+1. `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull` if you already have it)
+2. `mkdir -p ~/.cursor/plugins/local && cp -R ~/sylp/plugins/cursor ~/.cursor/plugins/local/sylp-provenance`
+3. Restart `agent` so the hooks load.
 
 **Codex CLI**:
 
-```sh
-git clone https://github.com/seanbenhur/sylp.git
-python3 sylp/install.py --host codex --marketplace
-```
-
-Then in `codex`, run `/plugins` to enable sylp-provenance and `/hooks` to trust its hooks.
+1. `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull` if you already have it)
+2. `python3 ~/sylp/install.py --host codex --marketplace`
+3. In `codex`, run `/plugins` to enable sylp-provenance and `/hooks` to trust its hooks.
 
 No per-repo setup: once the plugin is enabled, its hooks record every repo you open in that host, each into its own database under `~/.sylp-provenance/repos/`.
+
+### Install with your agent
+
+Paste this prompt into your agent (Claude Code, Cursor or Codex) and it will install the plugin for its own host and verify:
+
+```text
+Install the sylp provenance plugin (https://github.com/seanbenhur/sylp) for your host, then verify the install.
+
+1. Detect which host you are and use the matching path:
+   - Claude Code: run `claude plugin marketplace add seanbenhur/sylp` then `claude plugin install sylp-provenance@sylp-provenance`.
+   - Cursor CLI (agent): `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `mkdir -p ~/.cursor/plugins/local && cp -R ~/sylp/plugins/cursor ~/.cursor/plugins/local/sylp-provenance`.
+   - Codex CLI: `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `python3 ~/sylp/install.py --host codex --marketplace`.
+2. Verify without starting any agent session: run `python3 -m unittest discover -s ~/sylp/tests -v` (clone first if needed); 39 checks should pass. For Claude Code, clone the repo anywhere just for the tests. Confirm the plugin files landed where your host expects them.
+3. Do NOT run a live recorded prompt as part of this install; that would spend my plan quota. Do not send anything anywhere; the plugin stores data locally and unencrypted, so I will use it in disposable repos only.
+4. Tell me exactly what you installed and which files you changed, and remind me to restart the CLI so the hooks load.
+```
 
 ## Use it, from inside the agent
 
@@ -61,6 +82,6 @@ Python 3.10+ and git, no dependencies:
 python3 -m unittest discover -s tests -v
 ```
 
-To verify end to end inside a real host, paste [TESTING-AGENT-PROMPT.md](TESTING-AGENT-PROMPT.md) into your agent; it installs into a throwaway repo, runs one small recorded prompt and reports pass or fail. It states the quota cost first and waits for your go-ahead.
+To verify end to end inside a real host, paste [TESTING-AGENT-PROMPT.md](TESTING-AGENT-PROMPT.md) into your agent; it installs into a throwaway repo, runs one small recorded prompt and reports pass or fail. It states the quota cost first and waits for your go-ahead. The same flow exists as an agent-readable skill at [skills/sylp-provenance-test/SKILL.md](skills/sylp-provenance-test/SKILL.md), with per-host install variants.
 
 License: Apache-2.0.
