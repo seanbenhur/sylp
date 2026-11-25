@@ -21,7 +21,7 @@ This test uses the user's paid plan quota TWICE: once for this session, once for
 python3 ~/sylp/experiments/provenance/install.py --host cursor --repo ~/prov-test
 ```
 
-This creates `~/prov-test` (a throwaway git repo), stages the plugin into `~/.cursor/plugins/local/sylp-provenance`, and initializes the capture database at `~/.sylp-provenance/history.sqlite3`. The database binds to one repository: if this step fails with `Database already belongs to another repository`, re-run with the same repo path used before, or delete `~/.sylp-provenance/history.sqlite3` and re-run this command.
+This creates `~/prov-test` (a throwaway git repo), stages the plugin into `~/.cursor/plugins/local/sylp-provenance`, and initializes a per-repo capture database under `~/.sylp-provenance/repos/`. Note the exact database path it prints (`initialized capture db: ...`); you need it in step 5.
 
 Rules for `~/prov-test`: it is disposable. Captured prompts and code are stored locally and unencrypted, so never point this at a real or private repo.
 
@@ -37,8 +37,10 @@ cd ~/prov-test && agent -p --trust -f "Create hello.py with a function greet() t
 
 ## 4. Render the history page
 
+Run render from inside the recorded repo so it finds the right database:
+
 ```
-python3 ~/sylp/experiments/provenance/recorder.py render ~/prov-test-history.html
+cd ~/prov-test && python3 ~/sylp/experiments/provenance/recorder.py render ~/prov-test-history.html
 ```
 
 ## 5. Verify (all four checks)
@@ -46,13 +48,13 @@ python3 ~/sylp/experiments/provenance/recorder.py render ~/prov-test-history.htm
 1. `~/prov-test-history.html` exists.
 2. It does NOT contain the string `No recorded agent activity yet.` (that string means the hooks never fired).
 3. It contains `<svg` (the graph) and the string `hello.py` (the recorded change).
-4. The database has recorded events:
+4. The database has recorded events. Use the database path the install step printed:
 
 ```
-python3 -c "import os,sqlite3; db=sqlite3.connect(os.path.expanduser('~/.sylp-provenance/history.sqlite3')); print('events:', db.execute('select count(*) from events').fetchone()[0]); print('changes:', db.execute('select count(*) from changes').fetchone()[0])"
+python3 -c "import os,sqlite3; db=sqlite3.connect(os.environ['PROV_DB']); print('events:', db.execute('select count(*) from events').fetchone()[0]); print('changes:', db.execute('select count(*) from changes').fetchone()[0])"
 ```
 
-Both counts must be greater than 0.
+with `PROV_DB` set to that path. Both counts must be greater than 0.
 
 ## 6. Report
 
