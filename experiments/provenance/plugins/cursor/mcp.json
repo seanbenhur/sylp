@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "sylp-provenance": {
+      "command": "python3",
+      "args": [
+        "${CURSOR_PLUGIN_ROOT}/recorder.py",
+        "mcp"
+      ]
+    }
+  }
+}
