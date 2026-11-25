@@ -17,6 +17,7 @@ Nothing here contacts a marketplace, publishes, or touches any remote service.
 Python 3.10+, stdlib only.
 """
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -25,6 +26,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_DB = Path.home() / '.sylp-provenance' / 'history.sqlite3'
+
+
+def default_db_for(root):
+    """Same per-repository database path the recorder derives."""
+    digest = hashlib.sha1(str(root).encode()).hexdigest()[:12]
+    return Path.home() / '.sylp-provenance' / 'repos' / (Path(str(root)).name + '-' + digest + '.sqlite3')
 CODEX_EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'Stop', 'SessionEnd']
 
 
@@ -114,8 +121,9 @@ def main():
     parser.add_argument('--host', required=True, choices=['cursor', 'codex', 'claude'])
     parser.add_argument('--repo', required=True,
                         help='throwaway repo to capture; created with one commit if missing')
-    parser.add_argument('--db', default=str(DEFAULT_DB),
-                        help='capture database path (default supports ONE repository)')
+    parser.add_argument('--db', default=None,
+                        help='capture database path (default: one per repository under ~/.sylp-provenance/repos/, '
+                             'so repos can be selected separately in the viewer)')
     parser.add_argument('--marketplace', action='store_true',
                         help='codex only: personal-marketplace plugin install instead of project hooks')
     parser.add_argument('--force', action='store_true',
@@ -125,9 +133,10 @@ def main():
     if sys.version_info < (3, 10):
         raise SystemExit('Python 3.10+ required')
     repo, created = ensure_repo(args.repo)
-    init_db(args.host, repo, Path(args.db).expanduser())
+    db = Path(args.db).expanduser() if args.db else default_db_for(repo)
+    init_db(args.host, repo, db)
     print(('created throwaway repo: ' if created else 'using repo: ') + str(repo))
-    print('initialized capture db: ' + str(Path(args.db).expanduser()))
+    print('initialized capture db: ' + str(db))
 
     if args.host == 'cursor':
         dest = copy_plugin('cursor', Path.home() / '.cursor' / 'plugins' / 'local' / 'sylp-provenance')
