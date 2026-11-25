@@ -15,8 +15,8 @@ claude plugin marketplace add seanbenhur/sylp
 claude plugin install sylp-provenance@sylp-provenance
 ```
 
-## Status
+## Support and privacy
 
-Experimental. 39 automated tests pass against fixtures; the hooks and MCP wiring are written from Anthropic's docs and have not yet been verified in a live Claude Code session. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted, so prefer throwaway repos until you trust it. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
+Hook capture has run in live Claude Code sessions. 44 automated tests cover the recorder and adapters against fixtures. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
 
 License: Apache-2.0 (see the repository root).
