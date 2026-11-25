@@ -8,7 +8,7 @@ Inspired by delta.dev's "See how the code came to be". Delta is a hosted product
 
 ## Status
 
-Private experiment. Fixture-tested (30 checks, simulated hook payloads driving real file edits), **not yet verified in a live CLI session**. Hook event names and payload fields differ between hosts and may change between CLI versions. Use it only in a disposable repository.
+Public experiment, merged into sylp main. Fixture-tested (39 checks, simulated hook payloads driving real file edits), **not yet verified in a live CLI session**. Hook event names and payload fields differ between hosts and may change between CLI versions. Use it only in a disposable repository.
 
 ## See it
 
@@ -38,31 +38,29 @@ The plugin wires the server per host: Claude declares it inline in `.claude-plug
 
 ## Quick start
 
-Needs Python 3.10+ and git. One clone today (publishing to a marketplace would remove it; see Status), then each host installs natively. No per-repo setup: once the plugin is enabled, its hooks record every repo you open in that host, each into its own database under `~/.sylp-provenance/repos/`, created on the first hook event.
+Needs Python 3.10+ and git. Claude Code installs straight from GitHub with no clone; Cursor and Codex need one clone today (their marketplace submissions are being prepared). No per-repo setup: once the plugin is enabled, its hooks record every repo you open in that host, each into its own database under `~/.sylp-provenance/repos/`, created on the first hook event.
+
+**Claude Code** (native install, two commands, no clone):
 
 ```sh
-git clone -b experiment/code-provenance-adapters https://github.com/seanbenhur/sylp.git ~/sylp-prov
-```
-
-**Claude Code** (native install, two commands):
-
-```sh
-claude plugin marketplace add ~/sylp-prov/experiments/provenance
+claude plugin marketplace add seanbenhur/sylp
 claude plugin install sylp-provenance@sylp-provenance
 ```
 
 **Cursor CLI** (`agent`): Cursor has no CLI install command for local plugins, so the plugin folder is copied once into its documented local-plugin location:
 
 ```sh
-cp -R ~/sylp-prov/experiments/provenance/plugins/cursor ~/.cursor/plugins/local/sylp-provenance
+git clone https://github.com/seanbenhur/sylp.git
+cp -R sylp/experiments/provenance/plugins/cursor ~/.cursor/plugins/local/sylp-provenance
 ```
 
-(install.py does the same copy). A true one-command install needs the Cursor Marketplace, which is publishing.
+(install.py does the same copy). A true one-command install needs the Cursor Marketplace; the submission is being prepared.
 
 **Codex CLI**: Codex's local flow needs its personal-marketplace files written once; the installer does exactly that and nothing else:
 
 ```sh
-python3 ~/sylp-prov/experiments/provenance/install.py --host codex --marketplace
+git clone https://github.com/seanbenhur/sylp.git
+python3 sylp/experiments/provenance/install.py --host codex --marketplace
 ```
 
 Then open `codex`, run `/plugins` to enable sylp-provenance, and `/hooks` to trust its hooks (Codex skips untrusted hooks). That flow is written from the official docs and is not verified against a live Codex install.
@@ -80,7 +78,7 @@ Heads-up: while installed, the plugin records prompts and code from every repo y
 
 ## Scripted install alternative
 
-`install.py --host <cursor|codex|claude> --repo <dir>` still sets up any host in one step, including a throwaway repo and project-scoped Codex hooks (`.codex/hooks.json`) when you want capture in one repo only. Rendering a static export from inside a recorded repo: `python3 ~/sylp-prov/experiments/provenance/recorder.py render ~/history.html`.
+`install.py --host <cursor|codex|claude> --repo <dir>` still sets up any host in one step, including a throwaway repo and project-scoped Codex hooks (`.codex/hooks.json`) when you want capture in one repo only. Rendering a static export from inside a recorded repo: `python3 sylp/experiments/provenance/recorder.py render ~/history.html`.
 
 **Let your agent test it.** Paste [TESTING-AGENT-PROMPT.md](TESTING-AGENT-PROMPT.md) into your agent: it installs the plugin into a throwaway repo, runs one small recorded prompt, renders the history page and reports pass or fail with exact errors. It states the quota cost first and waits for your go-ahead. The same steps ship as a skill at [skills/sylp-provenance-test/SKILL.md](skills/sylp-provenance-test/SKILL.md).
 
@@ -129,7 +127,7 @@ All host integrations remain unverified until a version-pinned live session demo
 
 ## Shared recorder details
 
-Experimental code, based on sylp main `ca79119`. No changes to the existing harness coding loop. Not released and not validated in any installed host CLI session.
+Experimental code, merged into sylp main as squash commit `7d6b13e`. No changes to the existing harness coding loop. Not yet validated in any installed host CLI session.
 
 ## What works in the included fixture
 
