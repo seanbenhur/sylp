@@ -1,0 +1,12 @@
+{
+  "name": "sylp-provenance",
+  "owner": {
+    "name": "Sean Benhur"
+  },
+  "plugins": [
+    {
+      "name": "sylp-provenance",
+      "source": "./plugins/claude"
+    }
+  ]
+}
