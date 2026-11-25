@@ -10,8 +10,10 @@ What it does, per host:
           hooks), or --marketplace copies plugins/codex into ~/.codex/plugins/
           and registers it in ~/.agents/plugins/marketplace.json (personal
           marketplace flow; not verified against a live Codex install).
-  claude: no local plugin folder is documented; initializes the database and
-          prints the `claude --plugin-dir` command.
+  claude: initializes the database and prints the local marketplace install
+          commands (claude plugin marketplace add + install, using the committed
+          .claude-plugin/marketplace.json), plus the `claude --plugin-dir`
+          session-scoped alternative.
 
 Nothing here contacts a marketplace, publishes, or touches any remote service.
 Python 3.10+, stdlib only.
@@ -164,8 +166,12 @@ def main():
             print('  cd ' + str(repo) + ' && codex')
             print('  run /hooks and trust the sylp provenance hooks (Codex skips untrusted hooks)')
     else:
-        print('Next:')
+        print('Next (local marketplace install, persistent):')
+        print('  claude plugin marketplace add ' + str(ROOT))
+        print('  claude plugin install sylp-provenance@sylp-provenance')
+        print('Or for one session only:')
         print('  cd ' + str(repo) + ' && claude --plugin-dir ' + str(ROOT / 'plugins' / 'claude'))
+        print('Then open the dashboard any time with /sylp-provenance:serve')
 
     print()
     print('After one small edit prompt, render the captured history:')
