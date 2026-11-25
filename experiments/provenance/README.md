@@ -38,36 +38,49 @@ The plugin wires the server per host: Claude declares it inline in `.claude-plug
 
 ## Quick start
 
-Needs Python 3.10+ and git. The plugin directories are committed under `plugins/`, so there is no build step.
+Needs Python 3.10+ and git. One clone today (publishing to a marketplace would remove it; see Status), then each host installs natively. No per-repo setup: once the plugin is enabled, its hooks record every repo you open in that host, each into its own database under `~/.sylp-provenance/repos/`, created on the first hook event.
 
 ```sh
 git clone -b experiment/code-provenance-adapters https://github.com/seanbenhur/sylp.git ~/sylp-prov
-cd ~/sylp-prov/experiments/provenance
-python3 install.py --host cursor --repo ~/prov-test   # or: codex, claude
 ```
 
-`install.py` creates the throwaway repo if missing, installs the plugin for the chosen host (details below), and initializes the repo's capture database. Then open the repo in your agent, give it one small edit prompt, and run:
-
-```sh
-cd ~/prov-test && python3 ~/sylp-prov/experiments/provenance/recorder.py render ~/history.html
-```
-
-Open `~/history.html`, or run `python3 ~/sylp-prov/experiments/provenance/recorder.py serve` for the live dashboard. Rendering is host-independent: it reads only the local database and the repository's git history. Each repo gets its own database under `~/.sylp-provenance/repos/`, so run render from inside the recorded repo (or pass `--db`).
-
-## Install per host
-
-**Cursor CLI** (`agent`): `python3 install.py --host cursor --repo ~/prov-test`, then `cd ~/prov-test && agent`. The plugin is copied into `~/.cursor/plugins/local/sylp-provenance`, Cursor's documented local-plugin location, loaded by the editor and the CLI. If your build blocks local plugin imports, launch with `agent --plugin-dir ~/sylp-prov/experiments/provenance/plugins/cursor` instead (`--plugin-dir` is documented in Cursor's CLI parameter reference; not exercised on a real install here).
-
-**Codex CLI**: `python3 install.py --host codex --repo ~/prov-test2`, then `cd ~/prov-test2 && codex`. This writes a project-level `.codex/hooks.json` (a documented Codex hook location) pointing at the committed plugin by absolute path. Codex skips untrusted hooks: open `/hooks` in the CLI and trust the sylp provenance hooks first. `install.py --host codex --marketplace` instead installs through the documented personal-marketplace flow (`~/.codex/plugins/` + `~/.agents/plugins/marketplace.json`, then `/plugins` to enable); that flow is written from the official docs and is not verified against a live Codex install.
-
-**Claude Code**: `python3 install.py --host claude --repo ~/prov-test3` initializes the database and prints the two install commands, which use the committed marketplace catalog at `.claude-plugin/marketplace.json`:
+**Claude Code** (native install, two commands):
 
 ```sh
 claude plugin marketplace add ~/sylp-prov/experiments/provenance
 claude plugin install sylp-provenance@sylp-provenance
 ```
 
-For one session only: `cd ~/prov-test3 && claude --plugin-dir ~/sylp-prov/experiments/provenance/plugins/claude`.
+**Cursor CLI** (`agent`): Cursor has no CLI install command for local plugins, so the plugin folder is copied once into its documented local-plugin location:
+
+```sh
+cp -R ~/sylp-prov/experiments/provenance/plugins/cursor ~/.cursor/plugins/local/sylp-provenance
+```
+
+(install.py does the same copy). A true one-command install needs the Cursor Marketplace, which is publishing.
+
+**Codex CLI**: Codex's local flow needs its personal-marketplace files written once; the installer does exactly that and nothing else:
+
+```sh
+python3 ~/sylp-prov/experiments/provenance/install.py --host codex --marketplace
+```
+
+Then open `codex`, run `/plugins` to enable sylp-provenance, and `/hooks` to trust its hooks (Codex skips untrusted hooks). That flow is written from the official docs and is not verified against a live Codex install.
+
+## Use it, from inside the agent
+
+Open any repo in your agent and work as usual; the hooks record automatically. Then:
+
+- Ask **"why is this line here?"** - the agent answers through the plugin's MCP server from recorded evidence, with honest "no recorded session" when there is nothing.
+- **Dashboard**: `/sylp-provenance:serve` (Claude, Cursor) or the `serve-dashboard` skill (Codex) starts the read-only localhost dashboard.
+- **Demo without spending quota**: `/sylp-provenance:demo` builds a synthetic throwaway session under /tmp and renders it.
+- **PR evidence**: `/sylp-provenance:pr-evidence` drafts a per-file provenance summary; it never opens a PR by itself.
+
+Heads-up: while installed, the plugin records prompts and code from every repo you open in that host. `recorder.py pause` pauses a repo's database; uninstall removes capture entirely. Captured text stays local and unencrypted - prefer throwaway repos until you trust it.
+
+## Scripted install alternative
+
+`install.py --host <cursor|codex|claude> --repo <dir>` still sets up any host in one step, including a throwaway repo and project-scoped Codex hooks (`.codex/hooks.json`) when you want capture in one repo only. Rendering a static export from inside a recorded repo: `python3 ~/sylp-prov/experiments/provenance/recorder.py render ~/history.html`.
 
 **Let your agent test it.** Paste [TESTING-AGENT-PROMPT.md](TESTING-AGENT-PROMPT.md) into your agent: it installs the plugin into a throwaway repo, runs one small recorded prompt, renders the history page and reports pass or fail with exact errors. It states the quota cost first and waits for your go-ahead. The same steps ship as a skill at [skills/sylp-provenance-test/SKILL.md](skills/sylp-provenance-test/SKILL.md).
 
