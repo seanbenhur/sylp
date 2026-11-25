@@ -18,7 +18,7 @@ This test uses the user's paid plan quota twice: this session plus one small nes
 ## 2. Install
 
 ```
-python3 ~/sylp/experiments/provenance/install.py --host cursor --repo ~/prov-test
+python3 ~/sylp/install.py --host cursor --repo ~/prov-test
 ```
 
 `~/prov-test` is a throwaway repo. Captured text is stored locally and unencrypted; never use a real or private repo. The installer initializes a per-repo capture database under `~/.sylp-provenance/repos/`; note the path it prints (`initialized capture db: ...`).
@@ -36,7 +36,7 @@ cd ~/prov-test && agent -p --trust -f "Create hello.py with a function greet() t
 ## 4. Render
 
 ```
-cd ~/prov-test && python3 ~/sylp/experiments/provenance/recorder.py render ~/prov-test-history.html
+cd ~/prov-test && python3 ~/sylp/recorder.py render ~/prov-test-history.html
 ```
 
 ## 5. Verify (all four)
