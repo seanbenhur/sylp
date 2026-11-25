@@ -134,3 +134,22 @@ class McpTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class AutoInitTests(unittest.TestCase):
+    def test_first_hook_initializes_repo_database(self):
+        tmp = tempfile.TemporaryDirectory(); self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / 'fresh-repo'; root.mkdir()
+        subprocess.run(['git', 'init', '-q', str(root)], check=True)
+        dbpath = Path(tmp.name) / 'state' / 'history.sqlite3'
+        env = dict(os.environ, SYLP_PROVENANCE_DB=str(dbpath))
+        payload = json.dumps({'hook_event_name': 'SessionStart', 'session_id': 's1', 'cwd': str(root)})
+        proc = subprocess.run([sys.executable, str(HERE / 'recorder.py'), 'hook', '--host', 'claude'],
+                              env=env, input=payload, text=True, capture_output=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.strip(), '{}')
+        db = r.connect(str(dbpath))
+        self.assertEqual(r.meta(db, 'root'), str(root))
+        self.assertEqual(r.meta(db, 'enabled'), '1')
+        n = db.execute("SELECT count(*) FROM events WHERE kind='SessionStart'").fetchone()[0]
+        self.assertEqual(n, 1)
+        db.close()
