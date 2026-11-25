@@ -14,7 +14,7 @@ These screenshots are of the synthetic demo fixture ([examples/history.html](exa
 
 ## A real run: fixing a bug in openclaw/openclaw
 
-![Provenance graph from a live Claude Code session in a clone of openclaw/openclaw](examples/openclaw-run-graph.png)
+![Provenance graph from a live Claude Code session in a clone of openclaw/openclaw](https://github.com/user-attachments/assets/5aacb658-968e-4091-81d5-984b03f8e4e6)
 
 This is the exported `history.html` after a live Claude Code session in a clone of [openclaw/openclaw](https://github.com/openclaw/openclaw), where the agent fixed a CLI bug. The graph shows 4 recorded prompts, the Bash, Read and Edit tool windows around them (including edits to `models-cli.ts` and its test), and the git commit found at render time.
 
