@@ -1,6 +1,6 @@
 # Sylp provenance: see how your code came to be
 
-Local-first code provenance for AI coding agents. Click a change and see the prompt and tool action behind it. One plugin works with Claude Code, Codex CLI and Cursor CLI. Everything stays on your machine; nothing is uploaded.
+Local-first code provenance for AI coding agents. Click a change and see the prompt and tool action behind it. One recorder with adapters for Claude Code, Codex CLI and Cursor CLI. Everything stays on your machine; nothing is uploaded.
 
 ## What it looks like
 
@@ -60,8 +60,8 @@ Install the sylp provenance plugin (https://github.com/seanbenhur/sylp) for your
    - Claude Code: run `claude plugin marketplace add seanbenhur/sylp` then `claude plugin install sylp-provenance@sylp-provenance`.
    - Cursor CLI (agent): `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `mkdir -p ~/.cursor/plugins/local && cp -R ~/sylp/plugins/cursor ~/.cursor/plugins/local/sylp-provenance`.
    - Codex CLI: `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `python3 ~/sylp/install.py --host codex --marketplace`.
-2. Verify without starting any agent session: run `python3 -m unittest discover -s ~/sylp/tests -v` (clone first if needed); 39 checks should pass. For Claude Code, clone the repo anywhere just for the tests. Confirm the plugin files landed where your host expects them.
-3. Do NOT run a live recorded prompt as part of this install; that would spend my plan quota. Do not send anything anywhere; the plugin stores data locally and unencrypted, so I will use it in disposable repos only.
+2. Verify without starting any agent session: run `python3 -m unittest discover -s ~/sylp/tests -v` (clone first if needed); 44 checks should pass. For Claude Code, clone the repo anywhere just for the tests. Confirm the plugin files landed where your host expects them.
+3. Do NOT run a live recorded prompt as part of this install; that would spend my plan quota. Do not send anything anywhere; the plugin stores data locally and unencrypted.
 4. Tell me exactly what you installed and which files you changed, and remind me to restart the CLI so the hooks load.
 ```
 
@@ -80,7 +80,7 @@ Each host's lifecycle hooks send prompt and tool-call boundaries to a small stdl
 
 ## Limits
 
-- Fixture-tested only. Hook payload fields differ between hosts; no supported-version floor is claimed.
+- Live-verified on Claude Code only. Codex CLI and Cursor CLI support is tested against fixtures, not yet run in a live session. Hook payload fields differ between hosts; no supported-version floor is claimed.
 - Prompts and code can contain secrets. The filename exclusions are not a secret scanner, so do not use this on sensitive repositories yet.
 - Captured text is stored unencrypted locally. `recorder.py pause` pauses a repo; to erase history, close the recorder and delete the database under `~/.sylp-provenance`. No secure-erasure guarantee.
 - The plugin observes work; it does not execute, resume or control the host agent.
@@ -93,6 +93,6 @@ Python 3.10+ and git, no dependencies:
 python3 -m unittest discover -s tests -v
 ```
 
-To verify end to end inside a real host, paste [TESTING-AGENT-PROMPT.md](TESTING-AGENT-PROMPT.md) into your agent; it installs into a throwaway repo, runs one small recorded prompt and reports pass or fail. It states the quota cost first and waits for your go-ahead. The same flow exists as an agent-readable skill at [skills/sylp-provenance-test/SKILL.md](skills/sylp-provenance-test/SKILL.md), with per-host install variants.
+To verify end to end inside a real host, give your agent the agent-readable skill at [skills/sylp-provenance-test/SKILL.md](skills/sylp-provenance-test/SKILL.md), which has per-host install variants. It installs into a scratch repo, runs one small recorded prompt, reports pass or fail, and states the quota cost first and waits for your go-ahead.
 
 License: Apache-2.0.

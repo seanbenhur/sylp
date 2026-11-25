@@ -12,8 +12,8 @@ Local-first code provenance: records each prompt and tool-call boundary on your 
 
 Local install: copy this folder to `~/.cursor/plugins/local/sylp-provenance`. Once listed on the Cursor Marketplace, search for "sylp-provenance" in Customize instead.
 
-## Status
+## Support and privacy
 
-Experimental. 39 automated tests pass against fixtures; the hooks and MCP wiring are written from Cursor's docs and have not yet been verified in a live Cursor CLI session. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted, so prefer throwaway repos until you trust it. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
+Tested against fixtures (44 automated tests). The hooks and MCP wiring follow Cursor's docs and have not been run in a live Cursor CLI session yet. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
 
 License: Apache-2.0 (see the repository root).

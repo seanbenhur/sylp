@@ -81,7 +81,7 @@ def codex_project_hooks(repo, force=False):
     recorder = ROOT / 'plugins' / 'codex' / 'recorder.py'
     command = 'python3 "{}" hook --host codex'.format(recorder)
     config = {
-        'description': 'sylp provenance local capture (opt-in, disposable repo only)',
+        'description': 'sylp provenance local capture (opt-in)',
         'hooks': {event: [{'hooks': [{'type': 'command', 'command': command,
                                       'timeout': 3 if event == 'SessionEnd' else 15}]}]
                   for event in CODEX_EVENTS},

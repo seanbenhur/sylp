@@ -1,5 +1,5 @@
 {
-  "description": "Explicit opt-in local provenance experiment; no model calls or uploads",
+  "description": "Opt-in local provenance capture; no model calls or uploads",
   "hooks": {
     "SessionStart": [
       {

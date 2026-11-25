@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>Sylp / How this code came to be</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:960px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}h2{margin:28px 0 8px;font-size:24px}h3{margin:10px 0 4px;font:600 17px monospace;overflow-wrap:anywhere}p{line-height:1.6}.summary{color:#5a6b65}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.legend{font-size:13px;color:#5a6b65}svg{display:block;max-width:100%;height:auto;background:white;border:1px solid #d5ded8;border-radius:10px;margin:8px 0 16px}a{text-decoration:none}.thread{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 22px;padding:18px 20px}.bubble{max-width:82%;padding:10px 14px;border-radius:12px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}.bubble.user{background:#e3ecf7}.bubble.agent{background:#e7efe9}.muted{color:#7d8a83;font-size:14px}.change{border-top:1px solid #e1e7e3;margin-top:10px;padding-top:8px}article.change header small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}details{border-top:1px solid #e1e7e3;padding:10px 0}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px;margin:6px 0 14px}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.bubble{max-width:100%}}</style><main><div class="eyebrow">SYLP / PRIVATE PROVENANCE SPIKE</div><h1>How this code came to be.</h1><p>Every recorded change, connected to the prompt and tool action behind it. Evidence first. Unknowns stay unknown.</p><p class="summary">5 recorded prompts, 5 recorded changes, 3 commits at render time.</p><p class="summary">Recorded usage: 1 session, 5 prompts, tool calls: Edit 3, Bash 2, 5 recorded changes, 3 commits at render time; 25 Nov 2026 07:59 to 25 Nov 2026 07:59. Token counts and cost are not exposed by host hooks, so they are not shown.</p><div class="notice">Experimental local recording. This is not a verified live agent session. Tool-linked means temporal and named-file evidence, not guaranteed authorship. Nothing here is uploaded.</div><h2 id="graph">How this repository evolved</h2><p>Branches at render time: experiment/more-retries, master. Commits are read from git when this page was rendered, not from hook records, with their git author. A commit inside a tool window is possibly agent-made, not proven; a commit by anyone whose session was not recorded here is outside recorded sessions, whatever its author. Click a prompt or change node to jump to its thread below.</p><p class="legend"><span style="color:#3a6ea5">&#9679;</span> prompt &nbsp;<span style="color:#8a938e">&#9679;</span> tool window &nbsp;<span style="color:#3f7d54">&#9679;</span> recorded change &nbsp;<span style="color:#6b4fa1">&#9679;</span> git commit</p><svg viewBox="0 0 900 714" role="img" aria-label="Repository evolution graph"><line x1="70" y1="14" x2="70" y2="706" stroke="#d5ded8" stroke-width="2"/><line x1="560" y1="14" x2="560" y2="706" stroke="#d5ded8" stroke-width="2"/><text x="70" y="12" font-size="11" fill="#5a6b65" text-anchor="middle">conversation</text><text x="560" y="12" font-size="11" fill="#5a6b65" text-anchor="middle">commits</text><line x1="70" y1="64" x2="70" y2="102" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="102" x2="70" y2="140" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="178" x2="70" y2="216" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="216" x2="70" y2="254" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="330" x2="70" y2="368" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="368" x2="70" y2="406" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="444" x2="70" y2="482" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="482" x2="560" y2="520" stroke="#b9c6be" stroke-width="1.5" stroke-dasharray="4 3"/><line x1="70" y1="558" x2="70" y2="596" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="596" x2="70" y2="634" stroke="#b9c6be" stroke-width="1.5"/><circle cx="560" cy="26" r="7" fill="#6b4fa1"/><text x="576" y="24" font-size="13" fill="#1d2826">5b7c6eca Add retry helper - demo</text><text x="576" y="39" font-size="10" fill="#5a6b65">outside recorded agent sessions</text><a href="#thread-0"><circle cx="70" cy="64" r="7" fill="#3a6ea5"/><text x="86" y="62" font-size="13" fill="#1d2826">Prompt: Retry server errors, but do not retry every client err&hellip;</text></a><circle cx="70" cy="102" r="7" fill="#8a938e"/><text x="86" y="100" font-size="13" fill="#1d2826">Tool window: Edit (/tmp/sylp-demo3/fixture/retry.py)</text><a href="#change-1"><circle cx="70" cy="140" r="7" fill="#3f7d54"/><text x="86" y="138" font-size="13" fill="#1d2826">retry.py changed</text><text x="86" y="153" font-size="10" fill="#5a6b65">tool-linked: declared file changed in observed tool window</text></a><a href="#thread-1"><circle cx="70" cy="178" r="7" fill="#3a6ea5"/><text x="86" y="176" font-size="13" fill="#1d2826">Prompt: Also retry HTTP 429. Preserve the server-error rule.</text></a><circle cx="70" cy="216" r="7" fill="#8a938e"/><text x="86" y="214" font-size="13" fill="#1d2826">Tool window: Edit (/tmp/sylp-demo3/fixture/retry.py)</text><a href="#change-2"><circle cx="70" cy="254" r="7" fill="#3f7d54"/><text x="86" y="252" font-size="13" fill="#1d2826">retry.py changed</text><text x="86" y="267" font-size="10" fill="#5a6b65">tool-linked: declared file changed in observed tool window</text></a><a href="#change-3"><circle cx="70" cy="292" r="7" fill="#3f7d54"/><text x="86" y="290" font-size="13" fill="#1d2826">retry.py changed</text><text x="86" y="305" font-size="10" fill="#5a6b65">unattributed: observed between tool boundaries</text></a><a href="#thread-2"><circle cx="70" cy="330" r="7" fill="#3a6ea5"/><text x="86" y="328" font-size="13" fill="#1d2826">Prompt: Write a generated marker, then simulate a failed comma&hellip;</text></a><circle cx="70" cy="368" r="7" fill="#8a938e"/><text x="86" y="366" font-size="13" fill="#1d2826">Tool window: Bash (/tmp/sylp-demo3/fixture/retry.py)</text><a href="#change-4"><circle cx="70" cy="406" r="7" fill="#3f7d54"/><text x="86" y="404" font-size="13" fill="#1d2826">generated.txt changed</text><text x="86" y="419" font-size="10" fill="#5a6b65">associated: changed during tool window, causality unproven</text></a><a href="#thread-3"><circle cx="70" cy="444" r="7" fill="#3a6ea5"/><text x="86" y="442" font-size="13" fill="#1d2826">Prompt: Commit the retry changes so far.</text></a><circle cx="70" cy="482" r="7" fill="#8a938e"/><text x="86" y="480" font-size="13" fill="#1d2826">Tool window: Bash (/tmp/sylp-demo3/fixture/retry.py)</text><circle cx="560" cy="520" r="7" fill="#6b4fa1"/><text x="576" y="518" font-size="13" fill="#1d2826">ff9dbe23 Retry server errors and 429 only - &hellip;</text><text x="576" y="533" font-size="10" fill="#5a6b65">inside a recorded tool window: possibly agent-made, not</text><a href="#thread-4"><circle cx="70" cy="558" r="7" fill="#3a6ea5"/><text x="86" y="556" font-size="13" fill="#1d2826">Prompt: Add a test file covering the 429 case.</text></a><circle cx="70" cy="596" r="7" fill="#8a938e"/><text x="86" y="594" font-size="13" fill="#1d2826">Tool window: Edit (/tmp/sylp-demo3/fixture/retry.py)</text><a href="#change-5"><circle cx="70" cy="634" r="7" fill="#3f7d54"/><text x="86" y="632" font-size="13" fill="#1d2826">test_retry.py changed</text><text x="86" y="647" font-size="10" fill="#5a6b65">ambiguous: changed outside named file during tool window</text></a><circle cx="560" cy="672" r="7" fill="#6b4fa1"/><text x="576" y="670" font-size="13" fill="#1d2826">d932adbd Add retry tests - teammate [HEAD -&gt;&hellip;</text><text x="576" y="685" font-size="10" fill="#5a6b65">outside recorded agent sessions</text></svg><h2 id="threads">The conversations behind the changes</h2><label for="filter">Find a file</label><input id="filter" placeholder="e.g. retry.py"><section class="thread" id="thread-0"><div class="bubble user">Retry server errors, but do not retry every client error.</div><div class="bubble agent">Changed the retry predicate to server errors. This fixture has not run behavioral tests.</div><article class="change" id="change-1" data-path="retry.py"><header><span class="badge">tool-linked: declared file changed in observed tool window</span><h3>retry.py</h3><small>CHANGE 1 / claude / PostToolUse</small></header><details open><summary>Recorded code change</summary><pre>--- before/retry.py
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>Sylp / fixture / How this code came to be</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:960px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}h2{margin:28px 0 8px;font-size:24px}h3{margin:10px 0 4px;font:600 17px monospace;overflow-wrap:anywhere}p{line-height:1.6}.repo{font-size:18px;margin:0 0 14px}.repo strong{font-family:monospace}.summary{color:#5a6b65}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.legend{font-size:13px;color:#5a6b65}svg{display:block;max-width:100%;height:auto;background:white;border:1px solid #d5ded8;border-radius:10px;margin:8px 0 16px}a{text-decoration:none}.thread{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 22px;padding:18px 20px}.bubble{max-width:82%;padding:10px 14px;border-radius:12px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}.bubble.user{background:#e3ecf7}.bubble.agent{background:#e7efe9}.muted{color:#7d8a83;font-size:14px}.change{border-top:1px solid #e1e7e3;margin-top:10px;padding-top:8px}article.change header small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}details{border-top:1px solid #e1e7e3;padding:10px 0}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px;margin:6px 0 14px}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.bubble{max-width:100%}}</style><main><div class="eyebrow">SYLP / PROVENANCE</div><h1>How this code came to be.</h1><p class="repo">Repository: <strong>fixture</strong> <span class="muted">/tmp/demo/fixture</span></p><p>Every recorded change, connected to the prompt and tool action behind it. Evidence first. Unknowns stay unknown.</p><p class="summary">5 recorded prompts, 5 recorded changes, 3 commits at render time.</p><p class="summary">Recorded usage: 1 session, 5 prompts, tool calls: Edit 3, Bash 2, 5 recorded changes, 3 commits at render time; 25 Nov 2026 18:45 to 25 Nov 2026 18:45. Token counts and cost are not exposed by host hooks, so they are not shown.</p><div class="notice">Tool-linked means temporal and named-file evidence, not guaranteed authorship. Nothing here is uploaded.</div><h2 id="graph">How this repository evolved</h2><p>Branches at render time: feature/more-retries, master. Commits are read from git when this page was rendered, not from hook records, with their git author. A commit inside a tool window is possibly agent-made, not proven; a commit by anyone whose session was not recorded here is outside recorded sessions, whatever its author. Click a prompt or change node to jump to its thread below.</p><p class="legend"><span style="color:#3a6ea5">&#9679;</span> prompt &nbsp;<span style="color:#8a938e">&#9679;</span> tool window &nbsp;<span style="color:#3f7d54">&#9679;</span> recorded change &nbsp;<span style="color:#6b4fa1">&#9679;</span> git commit</p><svg viewBox="0 0 900 714" role="img" aria-label="Repository evolution graph"><line x1="70" y1="14" x2="70" y2="706" stroke="#d5ded8" stroke-width="2"/><line x1="560" y1="14" x2="560" y2="706" stroke="#d5ded8" stroke-width="2"/><text x="70" y="12" font-size="11" fill="#5a6b65" text-anchor="middle">conversation</text><text x="560" y="12" font-size="11" fill="#5a6b65" text-anchor="middle">commits</text><line x1="70" y1="64" x2="70" y2="102" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="102" x2="70" y2="140" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="178" x2="70" y2="216" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="216" x2="70" y2="254" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="330" x2="70" y2="368" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="368" x2="70" y2="406" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="444" x2="70" y2="482" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="482" x2="560" y2="520" stroke="#b9c6be" stroke-width="1.5" stroke-dasharray="4 3"/><line x1="70" y1="558" x2="70" y2="596" stroke="#b9c6be" stroke-width="1.5"/><line x1="70" y1="596" x2="70" y2="634" stroke="#b9c6be" stroke-width="1.5"/><circle cx="560" cy="26" r="7" fill="#6b4fa1"/><text x="576" y="24" font-size="13" fill="#1d2826">7640cbae Add retry helper - demo</text><text x="576" y="39" font-size="10" fill="#5a6b65">outside recorded agent sessions</text><a href="#thread-0"><circle cx="70" cy="64" r="7" fill="#3a6ea5"/><text x="86" y="62" font-size="13" fill="#1d2826">Prompt: Retry server errors, but do not retry every client err&hellip;</text></a><circle cx="70" cy="102" r="7" fill="#8a938e"/><text x="86" y="100" font-size="13" fill="#1d2826">Tool window: Edit (/tmp/demo/fixture/retry.py)</text><a href="#change-1"><circle cx="70" cy="140" r="7" fill="#3f7d54"/><text x="86" y="138" font-size="13" fill="#1d2826">retry.py changed</text><text x="86" y="153" font-size="10" fill="#5a6b65">tool-linked: declared file changed in observed tool window</text></a><a href="#thread-1"><circle cx="70" cy="178" r="7" fill="#3a6ea5"/><text x="86" y="176" font-size="13" fill="#1d2826">Prompt: Also retry HTTP 429. Preserve the server-error rule.</text></a><circle cx="70" cy="216" r="7" fill="#8a938e"/><text x="86" y="214" font-size="13" fill="#1d2826">Tool window: Edit (/tmp/demo/fixture/retry.py)</text><a href="#change-2"><circle cx="70" cy="254" r="7" fill="#3f7d54"/><text x="86" y="252" font-size="13" fill="#1d2826">retry.py changed</text><text x="86" y="267" font-size="10" fill="#5a6b65">tool-linked: declared file changed in observed tool window</text></a><a href="#change-3"><circle cx="70" cy="292" r="7" fill="#3f7d54"/><text x="86" y="290" font-size="13" fill="#1d2826">retry.py changed</text><text x="86" y="305" font-size="10" fill="#5a6b65">unattributed: observed between tool boundaries</text></a><a href="#thread-2"><circle cx="70" cy="330" r="7" fill="#3a6ea5"/><text x="86" y="328" font-size="13" fill="#1d2826">Prompt: Write a generated marker, then simulate a failed comma&hellip;</text></a><circle cx="70" cy="368" r="7" fill="#8a938e"/><text x="86" y="366" font-size="13" fill="#1d2826">Tool window: Bash (/tmp/demo/fixture/retry.py)</text><a href="#change-4"><circle cx="70" cy="406" r="7" fill="#3f7d54"/><text x="86" y="404" font-size="13" fill="#1d2826">generated.txt changed</text><text x="86" y="419" font-size="10" fill="#5a6b65">associated: changed during tool window, causality unproven</text></a><a href="#thread-3"><circle cx="70" cy="444" r="7" fill="#3a6ea5"/><text x="86" y="442" font-size="13" fill="#1d2826">Prompt: Commit the retry changes so far.</text></a><circle cx="70" cy="482" r="7" fill="#8a938e"/><text x="86" y="480" font-size="13" fill="#1d2826">Tool window: Bash (/tmp/demo/fixture/retry.py)</text><circle cx="560" cy="520" r="7" fill="#6b4fa1"/><text x="576" y="518" font-size="13" fill="#1d2826">3befb143 Retry server errors and 429 only - &hellip;</text><text x="576" y="533" font-size="10" fill="#5a6b65">inside a recorded tool window: possibly agent-made, not</text><a href="#thread-4"><circle cx="70" cy="558" r="7" fill="#3a6ea5"/><text x="86" y="556" font-size="13" fill="#1d2826">Prompt: Add a test file covering the 429 case.</text></a><circle cx="70" cy="596" r="7" fill="#8a938e"/><text x="86" y="594" font-size="13" fill="#1d2826">Tool window: Edit (/tmp/demo/fixture/retry.py)</text><a href="#change-5"><circle cx="70" cy="634" r="7" fill="#3f7d54"/><text x="86" y="632" font-size="13" fill="#1d2826">test_retry.py changed</text><text x="86" y="647" font-size="10" fill="#5a6b65">ambiguous: changed outside named file during tool window</text></a><circle cx="560" cy="672" r="7" fill="#6b4fa1"/><text x="576" y="670" font-size="13" fill="#1d2826">97f4b905 Add retry tests - teammate [HEAD -&gt;&hellip;</text><text x="576" y="685" font-size="10" fill="#5a6b65">outside recorded agent sessions</text></svg><h2 id="threads">The conversations behind the changes</h2><label for="filter">Find a file</label><input id="filter" placeholder="e.g. retry.py"><section class="thread" id="thread-0"><div class="bubble user">Retry server errors, but do not retry every client error.</div><div class="bubble agent">Changed the retry predicate to server errors. This fixture has not run behavioral tests.</div><article class="change" id="change-1" data-path="retry.py"><header><span class="badge">tool-linked: declared file changed in observed tool window</span><h3>retry.py</h3><small>CHANGE 1 / claude / PostToolUse</small></header><details open><summary>Recorded code change</summary><pre>--- before/retry.py
 +++ after/retry.py
 @@ -1,2 +1,2 @@
  def should_retry(status):
@@ -10,9 +10,9 @@
   &quot;tool_name&quot;: &quot;Edit&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre><p>Before a9721a357d47d07c71442bb5a2b5d6db3f91e9eb616de69f277ace5a0c5c532e<br>After 72356f0123dfc98589fe43d79f3aaabd89116c9ebfcb4dcf5375766eafbcc017</p></details></article></section><section class="thread" id="thread-1"><div class="bubble user">Also retry HTTP 429. Preserve the server-error rule.</div><div class="bubble agent">Included 429 as an explicit exception to the client-error exclusion.</div><article class="change" id="change-2" data-path="retry.py"><header><span class="badge">tool-linked: declared file changed in observed tool window</span><h3>retry.py</h3><small>CHANGE 2 / claude / PostToolUse</small></header><details open><summary>Recorded code change</summary><pre>--- before/retry.py
 +++ after/retry.py
@@ -26,9 +26,9 @@
   &quot;tool_name&quot;: &quot;Edit&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre><p>Before 72356f0123dfc98589fe43d79f3aaabd89116c9ebfcb4dcf5375766eafbcc017<br>After 62b81d10557c4adfb188d4feb1a077435cb48ac4a7ed9f4908dbd6d997075858</p></details></article></section><section class="thread" id="thread-2"><div class="bubble user">Write a generated marker, then simulate a failed command.</div><div class="bubble agent">Failure does not imply that no files were changed.</div><article class="change" id="change-4" data-path="generated.txt"><header><span class="badge">associated: changed during tool window, causality unproven</span><h3>generated.txt</h3><small>CHANGE 4 / claude / PostToolUseFailure</small></header><details open><summary>Recorded code change</summary><pre>--- before/generated.txt
 +++ after/generated.txt
@@ -40,9 +40,9 @@
   &quot;tool_name&quot;: &quot;Bash&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre><p>Before absent<br>After 6fa2d4506877e1befabf41b6da4e59aa538ebf74208a1f6810100111d6b7ae2e</p></details></article></section><section class="thread" id="thread-3"><div class="bubble user">Commit the retry changes so far.</div><div class="bubble agent">Committed retry.py and generated.txt in one commit.</div><p class="muted">No file changes recorded around this prompt.</p></section><section class="thread" id="thread-4"><div class="bubble user">Add a test file covering the 429 case.</div><div class="bubble agent">Created test_retry.py with two cases. Tests were not executed.</div><article class="change" id="change-5" data-path="test_retry.py"><header><span class="badge">ambiguous: changed outside named file during tool window</span><h3>test_retry.py</h3><small>CHANGE 5 / claude / PostToolUse</small></header><details open><summary>Recorded code change</summary><pre>--- before/test_retry.py
 +++ after/test_retry.py
@@ -62,9 +62,9 @@
   &quot;tool_name&quot;: &quot;Edit&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre><p>Before absent<br>After bab8eedd435092f06df0cb28378fe6bcf18acb7be9e5cda757c0c5723de5a903</p></details></article></section><h3>Changes without a recorded prompt</h3><article class="change" id="change-3" data-path="retry.py"><header><span class="badge">unattributed: observed between tool boundaries</span><h3>retry.py</h3><small>CHANGE 3 / claude / Stop</small></header><details open><summary>Recorded code change</summary><pre>--- before/retry.py
 +++ after/retry.py
@@ -79,19 +79,19 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: &quot;Manual fixture edit observed. Author not established by hooks.&quot;,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
-}</pre><p>Before 62b81d10557c4adfb188d4feb1a077435cb48ac4a7ed9f4908dbd6d997075858<br>After 6e33b47b0a507295cc0c4edfae5e68257a7196b517706125988add8bd522fb52</p></details></article><h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured in this spike. Full transcript import and inline message-to-hunk navigation are not implemented.</p><details><summary>SessionStart</summary><pre>{
+}</pre><p>Before 62b81d10557c4adfb188d4feb1a077435cb48ac4a7ed9f4908dbd6d997075858<br>After 6e33b47b0a507295cc0c4edfae5e68257a7196b517706125988add8bd522fb52</p></details></article><h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured. Full transcript import and inline message-to-hunk navigation are not implemented.</p><details><summary>SessionStart</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
   &quot;raw_event&quot;: &quot;SessionStart&quot;,
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>UserPromptSubmit</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -99,9 +99,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: &quot;Retry server errors, but do not retry every client error.&quot;,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PreToolUse</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -109,9 +109,9 @@
   &quot;tool_name&quot;: &quot;Edit&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PostToolUse</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -119,9 +119,9 @@
   &quot;tool_name&quot;: &quot;Edit&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>Stop</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -129,9 +129,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: &quot;Changed the retry predicate to server errors. This fixture has not run behavioral tests.&quot;,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>UserPromptSubmit</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -139,9 +139,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: &quot;Also retry HTTP 429. Preserve the server-error rule.&quot;,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PreToolUse</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -149,9 +149,9 @@
   &quot;tool_name&quot;: &quot;Edit&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PostToolUse</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -159,9 +159,9 @@
   &quot;tool_name&quot;: &quot;Edit&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>Stop</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -169,9 +169,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: &quot;Included 429 as an explicit exception to the client-error exclusion.&quot;,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>Stop</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -179,9 +179,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: &quot;Manual fixture edit observed. Author not established by hooks.&quot;,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>UserPromptSubmit</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -189,9 +189,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: &quot;Write a generated marker, then simulate a failed command.&quot;,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PreToolUse</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -199,9 +199,9 @@
   &quot;tool_name&quot;: &quot;Bash&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PostToolUseFailure</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -209,9 +209,9 @@
   &quot;tool_name&quot;: &quot;Bash&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>Stop</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -219,9 +219,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: &quot;Failure does not imply that no files were changed.&quot;,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>UserPromptSubmit</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -229,9 +229,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: &quot;Commit the retry changes so far.&quot;,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PreToolUse</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -239,9 +239,9 @@
   &quot;tool_name&quot;: &quot;Bash&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PostToolUse</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -249,9 +249,9 @@
   &quot;tool_name&quot;: &quot;Bash&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>Stop</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -259,9 +259,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: &quot;Committed retry.py and generated.txt in one commit.&quot;,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>UserPromptSubmit</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -269,9 +269,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: &quot;Add a test file covering the 429 case.&quot;,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PreToolUse</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -279,9 +279,9 @@
   &quot;tool_name&quot;: &quot;Edit&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>PostToolUse</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -289,9 +289,9 @@
   &quot;tool_name&quot;: &quot;Edit&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>Stop</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -299,9 +299,9 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: &quot;Created test_retry.py with two cases. Tests were not executed.&quot;,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>SessionEnd</summary><pre>{
   &quot;host&quot;: &quot;claude&quot;,
@@ -309,8 +309,8 @@
   &quot;tool_name&quot;: &quot;&quot;,
   &quot;prompt&quot;: null,
   &quot;last_assistant_message&quot;: null,
-  &quot;file_path&quot;: &quot;/tmp/sylp-demo3/fixture/retry.py&quot;,
+  &quot;file_path&quot;: &quot;/tmp/demo/fixture/retry.py&quot;,
   &quot;file_paths&quot;: [
-    &quot;/tmp/sylp-demo3/fixture/retry.py&quot;
+    &quot;/tmp/demo/fixture/retry.py&quot;
   ]
 }</pre></details><details><summary>Capture policy gaps</summary><pre>No policy gaps reported in last snapshot.</pre></details><footer>Local SQLite + content-addressed snapshots. No model calls, telemetry, remote assets or repository commits. This exported HTML contains captured code and prompt text; treat it as private.</footer></main><script>document.getElementById('filter').addEventListener('input',e=>{for(const a of document.querySelectorAll('.change'))a.hidden=!a.dataset.path.toLowerCase().includes(e.target.value.toLowerCase())})</script></html>

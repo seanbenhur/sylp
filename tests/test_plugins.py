@@ -1,5 +1,6 @@
 """Guard the committed plugin dirs: no drift from the shared code, valid manifests/hooks."""
 import json
+import time
 import unittest
 from pathlib import Path
 
@@ -82,6 +83,7 @@ class TestPluginDirs(unittest.TestCase):
             subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True, capture_output=True)
             subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@t',
                             'commit', '-m', 'initial'], check=True, capture_output=True)
+            time.sleep(1.1)  # commit times have 1s resolution; keep the first commit outside the tool window
             db = Path(tmp) / 'h.db'
             recorder = ROOT / 'plugins' / 'cursor' / 'recorder.py'
             env = {'PATH': '/usr/bin:/bin', 'SYLP_PROVENANCE_DB': str(db)}

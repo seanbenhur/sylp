@@ -1,7 +1,7 @@
 {
   "name": "sylp-provenance",
   "version": "0.1.0",
-  "description": "Private local code-provenance experiment: links recorded prompts/tool boundaries to file changes. Fixture-tested; not verified in a live host CLI session.",
+  "description": "Local code provenance: links recorded prompts and tool calls to file changes, so you can see the prompt behind a line of code. Nothing is uploaded.",
   "license": "Apache-2.0",
   "hooks": "./hooks/hooks.json"
 }
