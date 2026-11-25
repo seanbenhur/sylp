@@ -13,12 +13,12 @@ This test uses the user's paid plan quota TWICE: once for this session, once for
 - `agent status` shows a logged-in Cursor account.
 - Find the plugin source. If `~/sylp` exists, run `cd ~/sylp && git checkout main && git pull`. If `~/sylp` does not exist, clone it:
   `git clone https://github.com/seanbenhur/sylp.git ~/sylp`
-- Confirm `~/sylp/experiments/provenance/install.py` exists.
+- Confirm `~/sylp/install.py` exists.
 
 ## 2. Install into a throwaway repo
 
 ```
-python3 ~/sylp/experiments/provenance/install.py --host cursor --repo ~/prov-test
+python3 ~/sylp/install.py --host cursor --repo ~/prov-test
 ```
 
 This creates `~/prov-test` (a throwaway git repo), stages the plugin into `~/.cursor/plugins/local/sylp-provenance`, and initializes a per-repo capture database under `~/.sylp-provenance/repos/`. Note the exact database path it prints (`initialized capture db: ...`); you need it in step 5.
@@ -40,7 +40,7 @@ cd ~/prov-test && agent -p --trust -f "Create hello.py with a function greet() t
 Run render from inside the recorded repo so it finds the right database:
 
 ```
-cd ~/prov-test && python3 ~/sylp/experiments/provenance/recorder.py render ~/prov-test-history.html
+cd ~/prov-test && python3 ~/sylp/recorder.py render ~/prov-test-history.html
 ```
 
 ## 5. Verify (all four checks)
