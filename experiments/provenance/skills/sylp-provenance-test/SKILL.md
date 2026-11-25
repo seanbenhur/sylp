@@ -12,8 +12,8 @@ This test uses the user's paid plan quota twice: this session plus one small nes
 ## 1. Preflight
 
 - `python3 --version` >= 3.10, `git --version` works, `agent status` shows a logged-in account.
-- Plugin source at `~/sylp` on branch `experiment/code-provenance-adapters`; `git pull` if present, otherwise:
-  `git clone -b experiment/code-provenance-adapters https://github.com/seanbenhur/sylp.git ~/sylp`
+- Plugin source at `~/sylp` on `main`; `git checkout main && git pull` if present, otherwise:
+  `git clone https://github.com/seanbenhur/sylp.git ~/sylp`
 
 ## 2. Install
 
