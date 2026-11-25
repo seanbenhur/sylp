@@ -216,7 +216,7 @@ See the [comparison protocol](benchmarks/PROTOCOL.md) for a reproducible Sylp vs
 
 ## Experiments
 
-- [Provenance](experiments/provenance/README.md) - a local-first code-provenance plugin spike for Claude Code, Codex CLI and Cursor CLI: it links recorded prompts and tool windows to the file changes they caused, with a localhost dashboard and an MCP "why" tool. Experimental, fixture-tested; see its README for the honest status.
+- [Provenance](experiments/provenance/README.md) - see how your code came to be: a local-first plugin for Claude Code, Codex CLI and Cursor CLI that links each change to the prompt and tool action behind it. Experimental, fixture-tested.
 
 ## Documentation
 
