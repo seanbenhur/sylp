@@ -18,7 +18,7 @@ class TestPluginDirs(unittest.TestCase):
     def test_shared_code_copies_are_identical(self):
         for host in EVENTS:
             folder = ROOT / 'plugins' / host
-            for name in ('recorder.py', 'adapters.py'):
+            for name in ('recorder.py', 'adapters.py', 'demo.py'):
                 self.assertEqual((ROOT / name).read_bytes(), (folder / name).read_bytes(),
                                  host + '/' + name + ' drifted from the shared ' + name)
 
