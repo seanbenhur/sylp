@@ -214,6 +214,10 @@ The worktree keeps changes isolated from your current checkout. Shell commands c
 
 See the [comparison protocol](benchmarks/PROTOCOL.md) for a reproducible Sylp vs. Codex evaluation. Sylp has not been shown to outperform Codex until that protocol has been run and its results published.
 
+## Experiments
+
+- [Provenance](experiments/provenance/README.md) - a local-first code-provenance plugin spike for Claude Code, Codex CLI and Cursor CLI: it links recorded prompts and tool windows to the file changes they caused, with a localhost dashboard and an MCP "why" tool. Experimental, fixture-tested; see its README for the honest status.
+
 ## Documentation
 
 - [Architecture](docs/architecture.md) - module map, task lifecycle, the model loop, and interruption recovery
