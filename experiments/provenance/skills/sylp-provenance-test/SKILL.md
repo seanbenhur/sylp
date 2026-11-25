@@ -21,7 +21,7 @@ This test uses the user's paid plan quota twice: this session plus one small nes
 python3 ~/sylp/experiments/provenance/install.py --host cursor --repo ~/prov-test
 ```
 
-`~/prov-test` is a throwaway repo. Captured text is stored locally and unencrypted; never use a real or private repo. The database binds to one repository: if install fails with `Database already belongs to another repository`, reuse the earlier repo path or delete `~/.sylp-provenance/history.sqlite3` and re-run.
+`~/prov-test` is a throwaway repo. Captured text is stored locally and unencrypted; never use a real or private repo. The installer initializes a per-repo capture database under `~/.sylp-provenance/repos/`; note the path it prints (`initialized capture db: ...`).
 
 ## 3. One recorded prompt
 
@@ -36,7 +36,7 @@ cd ~/prov-test && agent -p --trust -f "Create hello.py with a function greet() t
 ## 4. Render
 
 ```
-python3 ~/sylp/experiments/provenance/recorder.py render ~/prov-test-history.html
+cd ~/prov-test && python3 ~/sylp/experiments/provenance/recorder.py render ~/prov-test-history.html
 ```
 
 ## 5. Verify (all four)
@@ -44,10 +44,10 @@ python3 ~/sylp/experiments/provenance/recorder.py render ~/prov-test-history.htm
 1. `~/prov-test-history.html` exists.
 2. It does not contain `No recorded agent activity yet.`
 3. It contains `<svg` and `hello.py`.
-4. Events and changes counts are both > 0:
+4. Events and changes counts are both > 0, using the database path install printed:
 
 ```
-python3 -c "import os,sqlite3; db=sqlite3.connect(os.path.expanduser('~/.sylp-provenance/history.sqlite3')); print('events:', db.execute('select count(*) from events').fetchone()[0]); print('changes:', db.execute('select count(*) from changes').fetchone()[0])"
+python3 -c "import os,sqlite3; db=sqlite3.connect(os.environ['PROV_DB']); print('events:', db.execute('select count(*) from events').fetchone()[0]); print('changes:', db.execute('select count(*) from changes').fetchone()[0])"
 ```
 
 ## 6. Report
