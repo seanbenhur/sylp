@@ -165,6 +165,8 @@ def main():
             print('Next:')
             print('  cd ' + str(repo) + ' && codex')
             print('  run /hooks and trust the sylp provenance hooks (Codex skips untrusted hooks)')
+        print('Optional "why" MCP server (if the plugin .mcp.json is not picked up):')
+        print('  codex mcp add sylp-provenance -- python3 ' + str(ROOT / 'plugins' / 'codex' / 'recorder.py') + ' mcp')
     else:
         print('Next (local marketplace install, persistent):')
         print('  claude plugin marketplace add ' + str(ROOT))
