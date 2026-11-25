@@ -122,7 +122,7 @@ def main():
     time.sleep(1.2)
     git('add', '.')
     git('commit', '-m', 'Add retry tests', author='teammate')
-    git('branch', 'experiment/more-retries')
+    git('branch', 'feature/more-retries')
 
     (out / 'synthetic-hooks.json').write_text(json.dumps(log, indent=2))
     subprocess.run(cli + ['render', str(out / 'history.html')], check=True)
