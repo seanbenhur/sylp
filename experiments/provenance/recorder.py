@@ -2,9 +2,6 @@
 """Private provenance spike. Python stdlib only; never runs model/tool commands."""
 import argparse
 import datetime
-"""Private provenance spike. Python stdlib only; never runs model/tool commands."""
-import argparse
-import datetime
 import difflib
 import hashlib
 import html
