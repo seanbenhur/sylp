@@ -14,16 +14,18 @@ These screenshots are of the synthetic demo fixture ([examples/history.html](exa
 
 ## A real run: fixing a bug in openclaw/openclaw
 
-![Provenance graph from a live Claude Code session in a clone of openclaw/openclaw](https://github.com/user-attachments/assets/5aacb658-968e-4091-81d5-984b03f8e4e6)
+![Provenance graph from a live Claude Code session in a clone of openclaw/openclaw](examples/openclaw-run-graph.svg)
 
-This is the exported `history.html` after a live Claude Code session in a clone of [openclaw/openclaw](https://github.com/openclaw/openclaw), where the agent fixed a CLI bug. The graph shows 4 recorded prompts, the Bash, Read and Edit tool windows around them (including edits to `models-cli.ts` and its test), and the git commit found at render time.
+This is the exported `history.html` for a clone of [openclaw/openclaw](https://github.com/openclaw/openclaw), rendered from the real capture database of six live Claude Code sessions, with the repository name shown under the title. The sessions reproduced and fixed a CLI bug; the graph shows the prompts, the Bash, Read and Edit tool windows around them (including edits to `models-cli.ts` and its test), and the git commits found at render time.
 
 What this screenshot does and does not show:
 
-- It shows the prompt and tool-call record from a real session.
-- It reports **0 recorded changes**. On this run the per-event file snapshot hit its 2000-file cap (the repo has over 66000 files), so the edited files never reached a snapshot and no diff was attributed. The page says so: tool-linked means temporal and named-file evidence, not guaranteed authorship. The recorder now also diffs the files a tool call declares past the cap; that fix is covered by a fixture test and has not been re-run live on openclaw.
-- The commit in the graph was made outside the recorded sessions.
+- It shows the prompt and tool-call record from real sessions.
+- It lists 13 recorded changes, none of them a diff of the `models-cli` edits. They come from a later session in which a branch switch changed files, and the page labels them "ambiguous" or "capture gap" rather than tool-linked. The edits to `models-cli.ts` earlier in the graph have no diff here: the repo has over 66000 files and the per-event snapshot stopped at its 2000-file cap, before the recorder diffed declared files past the cap (now fixed and covered by a fixture test; not re-run live on openclaw).
+- The commit at the top of the graph was made outside the recorded sessions.
 - Token counts and cost are not exposed by host hooks, so none are shown.
+
+The page is one static file written locally. Nothing is uploaded.
 
 ## Install
 
@@ -78,7 +80,7 @@ Each host's lifecycle hooks send prompt and tool-call boundaries to a small stdl
 
 ## Limits
 
-- Fixture-tested only. Hook payload fields differ between hosts and may change between CLI versions; no supported-version floor is claimed.
+- Fixture-tested only. Hook payload fields differ between hosts; no supported-version floor is claimed.
 - Prompts and code can contain secrets. The filename exclusions are not a secret scanner, so do not use this on sensitive repositories yet.
 - Captured text is stored unencrypted locally. `recorder.py pause` pauses a repo; to erase history, close the recorder and delete the database under `~/.sylp-provenance`. No secure-erasure guarantee.
 - The plugin observes work; it does not execute, resume or control the host agent.
