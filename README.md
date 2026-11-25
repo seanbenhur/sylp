@@ -93,6 +93,6 @@ Python 3.10+ and git, no dependencies:
 python3 -m unittest discover -s tests -v
 ```
 
-To verify end to end inside a real host, paste [TESTING-AGENT-PROMPT.md](TESTING-AGENT-PROMPT.md) into your agent; it installs into a throwaway repo, runs one small recorded prompt and reports pass or fail. It states the quota cost first and waits for your go-ahead. The same flow exists as an agent-readable skill at [skills/sylp-provenance-test/SKILL.md](skills/sylp-provenance-test/SKILL.md), with per-host install variants.
+To verify end to end inside a real host, give your agent the agent-readable skill at [skills/sylp-provenance-test/SKILL.md](skills/sylp-provenance-test/SKILL.md), which has per-host install variants. It installs into a scratch repo, runs one small recorded prompt, reports pass or fail, and states the quota cost first and waits for your go-ahead.
 
 License: Apache-2.0.
