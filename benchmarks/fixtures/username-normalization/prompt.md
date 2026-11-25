@@ -1,1 +1,0 @@
-Fix `normalize_username` in `usernames.py`. It should accept only strings, trim leading and trailing whitespace, lowercase the result, and return `None` for `None`, an empty string, or a string containing only whitespace. Preserve valid values such as `"0"`. Keep the public function name and signature unchanged.

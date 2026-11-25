@@ -1,1 +1,0 @@
-Add retry support to `Client` in `netclient.py`. Preserve the existing `Client(transport)` constructor and `send(method, url)` call. Before editing files or running commands, ask me which HTTP methods and status codes should be retried, how many total attempts to allow, what backoff to use, and what to return when attempts are exhausted. Do not guess or implement until I answer.

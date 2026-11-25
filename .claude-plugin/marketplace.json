@@ -6,11 +6,7 @@
   "plugins": [
     {
       "name": "sylp-provenance",
-      "source": {
-        "source": "git-subdir",
-        "url": "seanbenhur/sylp",
-        "path": "experiments/provenance/plugins/claude"
-      }
+      "source": "./plugins/claude"
     }
   ]
 }

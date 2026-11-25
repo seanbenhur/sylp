@@ -1,11 +1,8 @@
-.venv/
-.uv-cache/
 __pycache__/
 *.py[cod]
-*.egg-info/
-build/
 dist/
-.DS_Store
-/auth.json
-/state.sqlite3*
-/.sylp/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+history.html
+synthetic-hooks.json

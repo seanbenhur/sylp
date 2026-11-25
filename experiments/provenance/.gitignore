@@ -1,8 +1,0 @@
-__pycache__/
-*.py[cod]
-dist/
-*.sqlite3
-*.sqlite3-wal
-*.sqlite3-shm
-history.html
-synthetic-hooks.json

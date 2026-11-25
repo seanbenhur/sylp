@@ -1,1 +1,0 @@
-Before you implement the inventory task, inspect the package and retain these acceptance details for the next turn: ordering must use `str.casefold()` (not `lower()`), and returned product data must be deeply copied so mutating nested metadata cannot mutate the caller's input. Do not edit files yet. Summarize the requirements and wait for my next instruction.
