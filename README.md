@@ -4,7 +4,7 @@ Local-first code provenance for AI coding agents. Click a change and see the pro
 
 ## Status
 
-Public experiment, merged into sylp main. Fixture-tested (39 checks, simulated hook payloads driving real file edits), **not yet verified in a live CLI session**. Use it in a disposable repository. Captured text stays local and unencrypted.
+Public experiment. Fixture-tested (39 checks, simulated hook payloads driving real file edits), **not yet verified in a live CLI session**. Use it in a disposable repository. Captured text stays local and unencrypted.
 
 ## Install
 
@@ -19,14 +19,14 @@ claude plugin install sylp-provenance@sylp-provenance
 
 ```sh
 git clone https://github.com/seanbenhur/sylp.git
-cp -R sylp/experiments/provenance/plugins/cursor ~/.cursor/plugins/local/sylp-provenance
+cp -R sylp/plugins/cursor ~/.cursor/plugins/local/sylp-provenance
 ```
 
 **Codex CLI**:
 
 ```sh
 git clone https://github.com/seanbenhur/sylp.git
-python3 sylp/experiments/provenance/install.py --host codex --marketplace
+python3 sylp/install.py --host codex --marketplace
 ```
 
 Then in `codex`, run `/plugins` to enable sylp-provenance and `/hooks` to trust its hooks.
