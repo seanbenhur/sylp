@@ -14,7 +14,7 @@ These screenshots are of the synthetic demo fixture ([examples/history.html](exa
 
 ## A real run: fixing a bug in openclaw/openclaw
 
-![Provenance graph from a live Claude Code session in a clone of openclaw/openclaw](examples/openclaw-run-graph.png)
+![Provenance graph from a live Claude Code session in a clone of openclaw/openclaw](examples/openclaw-run-graph.svg)
 
 This is the exported `history.html` for a clone of [openclaw/openclaw](https://github.com/openclaw/openclaw), rendered from the real capture database of six live Claude Code sessions, with the repository name shown under the title. The sessions reproduced and fixed a CLI bug; the graph shows the prompts, the Bash, Read and Edit tool windows around them (including edits to `models-cli.ts` and its test), and the git commits found at render time.
 
