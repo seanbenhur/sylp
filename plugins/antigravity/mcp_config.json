@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "provenance": {
+      "command": "python3",
+      "args": [
+        "${PLUGIN_ROOT}/recorder.py",
+        "mcp"
+      ]
+    }
+  }
+}
