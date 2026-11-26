@@ -67,19 +67,24 @@ Install the sylp provenance plugin (https://github.com/seanbenhur/sylp) for your
    - Cursor CLI (agent): `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `mkdir -p ~/.cursor/plugins/local && cp -R ~/sylp/plugins/cursor ~/.cursor/plugins/local/sylp-provenance`.
    - Antigravity: `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `agy plugin install ~/sylp/plugins/antigravity`.
    - Codex CLI: `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `python3 ~/sylp/install.py --host codex --marketplace`.
-2. Verify without starting any agent session: run `python3 -m unittest discover -s ~/sylp/tests -v` (clone first if needed); 54 checks should pass. For Claude Code, clone the repo anywhere just for the tests. Confirm the plugin files landed where your host expects them.
+2. Verify without starting any agent session: run `python3 -m unittest discover -s ~/sylp/tests -v` (clone first if needed); 62 checks should pass. For Claude Code, clone the repo anywhere just for the tests. Confirm the plugin files landed where your host expects them.
 3. Do NOT run a live recorded prompt as part of this install; that would spend my plan quota. Do not send anything anywhere; the plugin stores data locally and unencrypted.
 4. Tell me exactly what you installed and which files you changed, and remind me to restart the CLI so the hooks load.
 ```
 
-## Use it, from inside the agent
+## Features
 
 Open any repo in your agent and work as usual; the hooks record automatically. Then:
 
-- Ask **"why is this line here?"** - the agent answers through the plugin's MCP server from recorded evidence, with an honest "no recorded session" when there is nothing.
-- **Dashboard**: `/sylp-provenance:serve` (Claude, Cursor) or the `serve-dashboard` skill (Codex, Antigravity) starts a read-only, localhost-only dashboard that updates live while your agent works.
+- **Ask "why is this line here?"** The agent answers through the plugin's MCP server from recorded evidence, with an honest "no recorded session" when there is nothing.
+- **History page**: a static `history.html` with a summary, a graph of every change connected to its prompt and tool window, a thread view per change (prompt, agent reply, diff, evidence label), a per-turn diffs view and a blame view. It is one local file; nothing is uploaded.
+- **Live dashboard**: `/sylp-provenance:serve` (Claude, Cursor) or the `serve-dashboard` skill (Codex, Antigravity) starts a localhost-only dashboard that updates while your agent works. The same views are there, and you can add notes in it. Note posts need the page's token and a localhost Host and Origin; notes are limited to 2000 characters. Nothing else in the dashboard writes.
+- **Per-turn diffs**: the net change to each file per prompt. CLI: `python3 recorder.py turns` (add `--since N` for everything changed since turn N). MCP tool: `turn_diffs`. Also in the history page and dashboard.
+- **Line-level blame**: `python3 recorder.py blame path/to/file --repo .` runs git blame and links a line to a recorded prompt only when the line's content exactly matches a recorded change that added it. Other lines say why there is no match. MCP tool: `blame`. Also in the history page and dashboard.
+- **Notes**: `python3 recorder.py note add --turn N --text "..."` (or `--change ID`) anchors a note to a turn or change; `note list` shows them. Notes appear in `turns`, `why` and `pr-summary`, and are left out when you pass `--no-prompts`. They stay in the local database.
+- **PR evidence**: `/sylp-provenance:pr-evidence` drafts a per-file provenance summary for a pull request; it never opens a PR by itself. `recorder.py pr-summary BASE HEAD --no-prompts` leaves prompt text out.
 - **Demo without spending quota**: `/sylp-provenance:demo` builds a synthetic throwaway session and renders it. A pre-rendered example is at [examples/history.html](examples/history.html).
-- **PR evidence**: `/sylp-provenance:pr-evidence` drafts a per-file provenance summary; it never opens a PR by itself.
+- **Four hosts, one recorder**: Claude Code, Codex CLI, Cursor CLI and Antigravity. See Limits for what has been run live.
 
 ## How it works
 
