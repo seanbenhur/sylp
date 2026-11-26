@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-command local install of the sylp provenance plugin (Cursor, Codex, Claude).
+"""One-command local install of the sylp provenance plugin (Cursor, Codex, Claude, Antigravity).
 
 What it does, per host:
   cursor: copies plugins/cursor into ~/.cursor/plugins/local/sylp-provenance
@@ -120,7 +120,7 @@ def codex_marketplace():
 def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--host', required=True, choices=['cursor', 'codex', 'claude'])
+    parser.add_argument('--host', required=True, choices=['cursor', 'codex', 'claude', 'antigravity'])
     parser.add_argument('--repo', required=True,
                         help='throwaway repo to capture; created with one commit if missing')
     parser.add_argument('--db', default=None,
@@ -149,6 +149,10 @@ def main():
         print('  (the plugin auto-loads from ~/.cursor/plugins/local; if your build blocks')
         print('   local plugin imports, run instead: agent --plugin-dir '
               + str(ROOT / 'plugins' / 'cursor') + ')')
+    elif args.host == 'antigravity':
+        print('Next (docs-based, not live-verified):')
+        print('  agy plugin install ' + str(ROOT / 'plugins' / 'antigravity'))
+        print('  cd ' + str(repo) + ' && agy   (restart so the hooks load)')
     elif args.host == 'codex':
         if args.marketplace:
             dest, market = codex_marketplace()
