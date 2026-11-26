@@ -1,0 +1,10 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "sylp-provenance",
+  "displayName": "sylp provenance",
+  "version": "0.1.0",
+  "description": "Local code provenance: links recorded prompts and tool calls to file changes, so you can see the prompt behind a line of code. Nothing is uploaded.",
+  "repository": "https://github.com/seanbenhur/sylp",
+  "license": "Apache-2.0",
+  "keywords": ["provenance", "audit", "git"]
+}

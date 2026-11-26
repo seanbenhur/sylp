@@ -1,6 +1,6 @@
 # Sylp provenance: see how your code came to be
 
-Local-first code provenance for AI coding agents. Click a change and see the prompt and tool action behind it. One recorder with adapters for Claude Code, Codex CLI and Cursor CLI. Everything stays on your machine; nothing is uploaded.
+Local-first code provenance for AI coding agents. Click a change and see the prompt and tool action behind it. One recorder with adapters for Claude Code, Codex CLI, Cursor CLI and Antigravity. Everything stays on your machine; nothing is uploaded.
 
 ## What it looks like
 
@@ -47,11 +47,17 @@ The page is one static file written locally. Nothing is uploaded.
 2. `python3 ~/sylp/install.py --host codex --marketplace`
 3. In `codex`, run `/plugins` to enable sylp-provenance and `/hooks` to trust its hooks.
 
+**Antigravity** (CLI, IDE and App share one hook format):
+
+1. `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull` if you already have it)
+2. `agy plugin install ~/sylp/plugins/antigravity`
+3. Restart Antigravity so the hooks load.
+
 No per-repo setup: once the plugin is enabled, its hooks record every repo you open in that host, each into its own database under `~/.sylp-provenance/repos/`.
 
 ### Install with your agent
 
-Paste this prompt into your agent (Claude Code, Cursor or Codex) and it will install the plugin for its own host and verify:
+Paste this prompt into your agent (Claude Code, Cursor, Codex or Antigravity) and it will install the plugin for its own host and verify:
 
 ```text
 Install the sylp provenance plugin (https://github.com/seanbenhur/sylp) for your host, then verify the install.
@@ -59,8 +65,9 @@ Install the sylp provenance plugin (https://github.com/seanbenhur/sylp) for your
 1. Detect which host you are and use the matching path:
    - Claude Code: run `claude plugin marketplace add seanbenhur/sylp` then `claude plugin install sylp-provenance@sylp-provenance`.
    - Cursor CLI (agent): `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `mkdir -p ~/.cursor/plugins/local && cp -R ~/sylp/plugins/cursor ~/.cursor/plugins/local/sylp-provenance`.
+   - Antigravity: `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `agy plugin install ~/sylp/plugins/antigravity`.
    - Codex CLI: `git clone https://github.com/seanbenhur/sylp.git ~/sylp` (or `git -C ~/sylp pull`), then `python3 ~/sylp/install.py --host codex --marketplace`.
-2. Verify without starting any agent session: run `python3 -m unittest discover -s ~/sylp/tests -v` (clone first if needed); 44 checks should pass. For Claude Code, clone the repo anywhere just for the tests. Confirm the plugin files landed where your host expects them.
+2. Verify without starting any agent session: run `python3 -m unittest discover -s ~/sylp/tests -v` (clone first if needed); 54 checks should pass. For Claude Code, clone the repo anywhere just for the tests. Confirm the plugin files landed where your host expects them.
 3. Do NOT run a live recorded prompt as part of this install; that would spend my plan quota. Do not send anything anywhere; the plugin stores data locally and unencrypted.
 4. Tell me exactly what you installed and which files you changed, and remind me to restart the CLI so the hooks load.
 ```
@@ -70,7 +77,7 @@ Install the sylp provenance plugin (https://github.com/seanbenhur/sylp) for your
 Open any repo in your agent and work as usual; the hooks record automatically. Then:
 
 - Ask **"why is this line here?"** - the agent answers through the plugin's MCP server from recorded evidence, with an honest "no recorded session" when there is nothing.
-- **Dashboard**: `/sylp-provenance:serve` (Claude, Cursor) or the `serve-dashboard` skill (Codex) starts a read-only, localhost-only dashboard that updates live while your agent works.
+- **Dashboard**: `/sylp-provenance:serve` (Claude, Cursor) or the `serve-dashboard` skill (Codex, Antigravity) starts a read-only, localhost-only dashboard that updates live while your agent works.
 - **Demo without spending quota**: `/sylp-provenance:demo` builds a synthetic throwaway session and renders it. A pre-rendered example is at [examples/history.html](examples/history.html).
 - **PR evidence**: `/sylp-provenance:pr-evidence` drafts a per-file provenance summary; it never opens a PR by itself.
 
@@ -80,7 +87,7 @@ Each host's lifecycle hooks send prompt and tool-call boundaries to a small stdl
 
 ## Limits
 
-- Live-verified on Claude Code only. Codex CLI and Cursor CLI support is tested against fixtures, not yet run in a live session. Hook payload fields differ between hosts; no supported-version floor is claimed.
+- Live-verified on Claude Code only. Codex CLI, Cursor CLI and Antigravity support is tested against fixtures, not yet run in a live session. Hook payload fields differ between hosts; no supported-version floor is claimed.
 - Prompts and code can contain secrets. The filename exclusions are not a secret scanner, so do not use this on sensitive repositories yet.
 - Captured text is stored unencrypted locally. `recorder.py pause` pauses a repo; to erase history, close the recorder and delete the database under `~/.sylp-provenance`. No secure-erasure guarantee.
 - The plugin observes work; it does not execute, resume or control the host agent.

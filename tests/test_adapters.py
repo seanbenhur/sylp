@@ -82,4 +82,39 @@ class HostAdapterTests(unittest.TestCase):
         self.send('codex','PreToolUse',**kw); self.a.write_text('once\n'); self.send('codex','PostToolUse',**kw); self.send('codex','PostToolUse',**kw)
         self.assertEqual(len(self.changes()),1)
 
+    def ag(self,event,**fields):
+        base={'conversationId':'c1','workspacePaths':[str(self.root)],'lastUserInput':'Change a'}
+        base.update(fields); value=adapters.normalize('antigravity',base,event)
+        if value is not None: r.record(self.db,value)
+        return value
+    def test_antigravity_edit_tool_linked_and_prompt_synthesized(self):
+        self.ag('PreInvocation')
+        call={'name':'write_to_file','args':{'TargetFile':str(self.a)}}
+        self.ag('PreToolUse',toolCall=call,stepIdx=1); self.a.write_text('x = 5\n'); self.ag('PostToolUse',toolCall=call,stepIdx=1)
+        self.assertTrue(self.changes()[0]['evidence'].startswith('tool-linked'))
+        out=Path(self.tmp.name)/'view.html'; r.render(self.db,out); self.assertIn('Change a',out.read_text())
+    def test_antigravity_shell_is_associated_only(self):
+        call={'name':'run_command','args':{'CommandLine':'echo hi > a.py'}}
+        self.ag('PreToolUse',toolCall=call,stepIdx=2); self.a.write_text('shell\n'); self.ag('PostToolUse',toolCall=call,stepIdx=2)
+        self.assertTrue(self.changes()[0]['evidence'].startswith('associated'))
+    def test_antigravity_error_becomes_failure(self):
+        call={'name':'run_command','args':{}}
+        self.assertEqual(self.ag('PostToolUse',toolCall=call,stepIdx=4,error='boom')['hook_event_name'],'PostToolUseFailure')
+    def test_antigravity_event_mapping(self):
+        self.assertIsNone(self.ag('PostInvocation'))
+        self.assertIsNone(self.ag('PreInvocation',lastUserInput=''))
+        self.assertEqual(self.ag('PreInvocation')['hook_event_name'],'UserPromptSubmit')
+        self.assertEqual(self.ag('Stop')['hook_event_name'],'Stop')
+    def test_antigravity_refuses_guessed_input(self):
+        call={'name':'run_command','args':{}}
+        with self.assertRaises(ValueError): self.ag('PreToolUse',toolCall=call)  # no stepIdx
+        with self.assertRaises(ValueError): self.ag('PreToolUse',stepIdx=1)  # no tool name
+        with self.assertRaises(ValueError): self.ag('Stop',workspacePaths=['/a','/b'])  # no cwd guessing
+        with self.assertRaises(ValueError): self.ag('Stop',conversationId=None)
+        with self.assertRaises(ValueError): self.ag('NotAnEvent')
+        with self.assertRaises(ValueError): adapters.normalize('antigravity',{'conversationId':'c','workspacePaths':[str(self.root)]})
+    def test_antigravity_session_does_not_collide(self):
+        self.ag('PreInvocation'); self.send('cursor','beforeSubmitPrompt',prompt='Change a')
+        self.assertEqual(self.db.execute('SELECT count(DISTINCT session) FROM events').fetchone()[0],2)
+
 if __name__=='__main__': unittest.main()

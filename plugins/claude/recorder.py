@@ -219,7 +219,7 @@ def record(db, data):
                 label, target = 'unattributed: no recorded tool-start boundary', None
             elif start['overlap']:
                 label, target = 'ambiguous: overlapping tool windows', None
-            elif body['tool_name'] in {'Edit','Write','StrReplace','ApplyPatch','apply_patch'} and start['path']:
+            elif body['tool_name'] in {'Edit','Write','StrReplace','ApplyPatch','apply_patch','write_to_file','replace_file_content','multi_replace_file_content'} and start['path']:
                 target = json.loads(start['path'])
                 label = 'tool-linked: declared file changed in observed tool window'
             else:
@@ -811,7 +811,8 @@ def main():
                         help='capture database path; default is a per-repository database under ~/.sylp-provenance/repos/')
     sub = parser.add_subparsers(dest='action', required=True)
     init = sub.add_parser('init'); init.add_argument('repo'); init.add_argument('--accept-local-capture',action='store_true',required=True)
-    hook = sub.add_parser('hook'); hook.add_argument('--host', choices=['claude','codex','cursor'], default='claude')
+    hook = sub.add_parser('hook'); hook.add_argument('--host', choices=['claude','codex','cursor','antigravity'], default='claude')
+    hook.add_argument('--event', default=None, help='hook event name, for hosts whose payload does not carry it')
     show = sub.add_parser('render'); show.add_argument('output')
     srv = sub.add_parser('serve'); srv.add_argument('--dir', default=str(Path.home()/'.sylp-provenance')); srv.add_argument('--port', type=int, default=8777)
     sub.add_parser('pause'); sub.add_parser('enable')
@@ -831,17 +832,19 @@ def main():
         raw = sys.stdin.buffer.read(1024*1024+1)
         if len(raw)>1024*1024: raise ValueError('Hook payload too large')
         from adapters import normalize
-        data = normalize(args.host, json.loads(raw))
-        db = connect(str(resolve_db(args.db, data.get('cwd'))))
-        try:
-            if not meta(db, 'root'):
-                # Installing the plugin is the opt-in: first hook in a repo initializes
-                # that repo's own database automatically. `pause` stops capture per repo.
-                initialize(db, gitroot(data.get('cwd', '.')))
-            record(db, data)
-        finally:
-            db.close()
-        print('{}')  # Valid no-op hook response, including Codex Stop
+        data = normalize(args.host, json.loads(raw), args.event)
+        if data is not None:
+            db = connect(str(resolve_db(args.db, data.get('cwd'))))
+            try:
+                if not meta(db, 'root'):
+                    # Installing the plugin is the opt-in: first hook in a repo initializes
+                    # that repo's own database automatically. `pause` stops capture per repo.
+                    initialize(db, gitroot(data.get('cwd', '.')))
+                record(db, data)
+            finally:
+                db.close()
+        # Valid no-op hook response, including Codex Stop. Antigravity requires a decision on PreToolUse; allow defers to the default policy.
+        print(json.dumps({'decision': 'allow'}) if args.host == 'antigravity' and args.event == 'PreToolUse' else '{}')
         return
     hint = args.repo if args.action in ('init', 'why', 'pr-summary') else os.getcwd()
     db = connect(str(resolve_db(args.db, hint)))

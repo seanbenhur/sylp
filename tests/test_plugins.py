@@ -17,7 +17,7 @@ VARIABLE = {'claude': 'CLAUDE_PLUGIN_ROOT', 'codex': 'PLUGIN_ROOT', 'cursor': 'C
 
 class TestPluginDirs(unittest.TestCase):
     def test_shared_code_copies_are_identical(self):
-        for host in EVENTS:
+        for host in list(EVENTS) + ['antigravity']:
             folder = ROOT / 'plugins' / host
             for name in ('recorder.py', 'adapters.py', 'demo.py'):
                 self.assertEqual((ROOT / name).read_bytes(), (folder / name).read_bytes(),
@@ -125,6 +125,81 @@ class TestPluginDirs(unittest.TestCase):
             if host == 'codex':
                 base['turn_id'] = 'turn-1'
         return base
+
+
+class TestAntigravityPlugin(unittest.TestCase):
+    """Antigravity differs: manifest, hooks.json shape, relative commands, --event, no hook-event field."""
+    folder = ROOT / 'plugins' / 'antigravity'
+
+    def test_manifest(self):
+        for path in (self.folder / 'plugin.json', self.folder / '.antigravity-plugin' / 'plugin.json'):
+            manifest = json.loads(path.read_text())
+            self.assertEqual(manifest['name'], 'sylp-provenance')
+            self.assertEqual(manifest['$schema'], 'https://antigravity.google/schemas/v1/plugin.json')
+            self.assertRegex(manifest['version'], r'^\d+\.\d+\.\d+$')
+
+    def test_hooks_shape_and_commands(self):
+        group = json.loads((self.folder / 'hooks.json').read_text())['sylp-provenance']
+        self.assertEqual(set(group), {'SessionStart', 'PreInvocation', 'PreToolUse', 'PostToolUse', 'Stop'})
+        for event, entries in group.items():
+            for entry in entries:
+                if event in ('PreToolUse', 'PostToolUse'):
+                    self.assertIn('matcher', entry)
+                    handlers = entry['hooks']
+                else:
+                    handlers = [entry]
+                for handler in handlers:
+                    self.assertEqual(handler['type'], 'command')
+                    self.assertEqual(handler['command'], 'python3 ./recorder.py hook --host antigravity --event ' + event)
+                    self.assertNotIn('PLUGIN_ROOT', handler['command'])
+
+    def test_mcp_config(self):
+        config = json.loads((self.folder / 'mcp_config.json').read_text())
+        self.assertEqual(config['mcpServers']['provenance']['args'], ['${PLUGIN_ROOT}/recorder.py', 'mcp'])
+
+    def test_fixture_session_end_to_end(self):
+        """Fixture payloads in the documented camelCase shape, run through the plugin's own hook commands."""
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / 'repo'
+            repo.mkdir()
+            subprocess.run(['git', '-C', str(repo), 'init'], check=True, capture_output=True)
+            (repo / 'a.py').write_text('x=1\n')
+            subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True, capture_output=True)
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-m', 'i'],
+                           check=True, capture_output=True)
+            time.sleep(1.1)
+            db = Path(tmp) / 'h.db'
+            env = {'PATH': '/usr/bin:/bin', 'SYLP_PROVENANCE_DB': str(db)}
+            group = json.loads((self.folder / 'hooks.json').read_text())['sylp-provenance']
+            def command(event):
+                entry = group[event][0]
+                return (entry['hooks'][0] if 'hooks' in entry else entry)['command']
+            def fire(event, **fields):
+                payload = {'conversationId': 'conv1', 'workspacePaths': [str(repo)], 'modelName': 'm'}
+                payload.update(fields)
+                result = subprocess.run(['bash', '-c', command(event)], cwd=self.folder, input=json.dumps(payload).encode(),
+                                        capture_output=True, env=env)
+                self.assertEqual(result.returncode, 0, result.stderr.decode())
+                return json.loads(result.stdout)
+            self.assertEqual(fire('SessionStart'), {})
+            fire('PreInvocation', lastUserInput='Change x to 2')
+            fire('PreInvocation', lastUserInput='Change x to 2')  # repeated per model call: one prompt event
+            call = {'name': 'replace_file_content', 'args': {'TargetFile': str(repo / 'a.py')}}
+            self.assertEqual(fire('PreToolUse', lastUserInput='Change x to 2', toolCall=call, stepIdx=3), {'decision': 'allow'})
+            (repo / 'a.py').write_text('x=2\n')
+            fire('PostToolUse', lastUserInput='Change x to 2', toolCall=call, stepIdx=3)
+            self.assertEqual(fire('Stop'), {})
+            import sqlite3
+            con = sqlite3.connect(db)
+            self.assertEqual(con.execute("SELECT count(*) FROM events WHERE kind='UserPromptSubmit'").fetchone()[0], 1)
+            evidence = con.execute('SELECT evidence FROM changes').fetchall()
+            self.assertEqual(len(evidence), 1)
+            self.assertTrue(evidence[0][0].startswith('tool-linked'))
+            subprocess.run(['python3', str(self.folder / 'recorder.py'), '--db', str(db), 'render', str(Path(tmp) / 'o.html')],
+                           check=True, capture_output=True, env=env)
+            self.assertIn('Change x to 2', (Path(tmp) / 'o.html').read_text())
 
 
 if __name__ == '__main__':
