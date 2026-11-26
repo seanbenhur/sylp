@@ -118,7 +118,7 @@ class McpTests(unittest.TestCase):
         self.assertEqual(len(replies), 3)
         self.assertEqual(replies[0]['result']['serverInfo']['name'], 'sylp-provenance')
         names = [t['name'] for t in replies[1]['result']['tools']]
-        self.assertEqual(names, ['why', 'pr_summary'])
+        self.assertEqual(names, ['why', 'pr_summary', 'turn_diffs', 'blame'])
         payload = json.loads(replies[2]['result']['content'][0]['text'])
         self.assertEqual(payload['matched'], 'exact')
         self.assertEqual(payload['prompt'], 'Make it two')

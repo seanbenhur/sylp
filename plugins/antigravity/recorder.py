@@ -44,6 +44,7 @@ def connect(path):
     CREATE TABLE IF NOT EXISTS snapshots(id INTEGER PRIMARY KEY, event TEXT, files TEXT, gaps TEXT);
     CREATE TABLE IF NOT EXISTS pending(tool TEXT PRIMARY KEY, event TEXT, path TEXT, overlap INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS changes(id INTEGER PRIMARY KEY, event TEXT, path TEXT, before_hash TEXT, after_hash TEXT, evidence TEXT, patch TEXT);
+    CREATE TABLE IF NOT EXISTS notes(id INTEGER PRIMARY KEY, kind TEXT, target TEXT, body TEXT, at REAL);
     ''')
     return db
 
@@ -408,7 +409,105 @@ def evolution(db):
     return '<h2 id="graph">How this repository evolved</h2>' + note + legend + svg + empty
 
 
-def build_page(db):
+NOTE_LIMIT = 2000
+EXTRA_CSS = ('.turn{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 18px;padding:16px 20px}'
+             '.turn h3{font:600 16px system-ui,sans-serif;margin:0 0 6px}.turn .ord{font:12px monospace;color:#486a60}'
+             '.since{margin-top:8px}.note{background:#fff8e9;border-left:3px solid #b67d30;padding:8px 12px;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}'
+             '.noteform{display:flex;gap:8px;margin:8px 0}.noteform input[type=text]{margin:0;flex:1}'
+             '.noteform button{border:1px solid #486a60;background:#eaf0eb;border-radius:7px;padding:0 14px;cursor:pointer}'
+             '.grp{border:1px solid #d5ded8;border-radius:8px;margin:12px 0;background:white}.grp header{padding:8px 12px;background:#f5f7f4;font-size:13px;border-bottom:1px solid #e1e7e3}'
+             '.grp.none header{background:#f4f3ef;color:#7d8a83}.grp pre{margin:0;border-radius:0;background:white}'
+             '.diff{display:block;min-height:1.6em;white-space:pre-wrap}.add{color:#1d6b3a;background:#eaf6ee}.del{color:#a1302b;background:#fbeceb}')
+
+
+def diff_html(patch):
+    esc = html.escape
+    out = []
+    for line in patch.splitlines():
+        cls = 'add' if line.startswith('+') and not line.startswith('+++') else 'del' if line.startswith('-') and not line.startswith('---') else ''
+        out.append('<span class="diff ' + cls + '">' + esc(line) + '</span>')
+    return '<pre>' + ''.join(out) + '</pre>'
+
+
+def note_form(ui, kind, target, label='Add a note'):
+    if not ui: return ''
+    return ('<form class="noteform" method="post" action="' + ui['action'] + '"><input type="hidden" name="token" value="' + ui['token'] + '">'
+            '<input type="hidden" name="kind" value="' + kind + '"><input type="hidden" name="target" value="' + html.escape(str(target)) + '">'
+            '<input type="text" name="body" maxlength="' + str(NOTE_LIMIT) + '" placeholder="' + label + ' (stays in your local database)" required>'
+            '<button type="submit">Add note</button></form>')
+
+
+def notes_html(db, kind, target):
+    return ''.join('<div class="note">' + html.escape(b) + '</div>' for b in notes_for(db, kind, target))
+
+
+def turns_html(db, ui=None):
+    esc = html.escape
+    turns = turn_diffs(db)
+    if not turns:
+        return '<p class="muted">No recorded file changes yet.</p>'
+    out = []
+    for t in turns:
+        title = t['prompt'] if t['prompt'] else '(no recorded prompt for this turn)'
+        block = ['<section class="turn" id="turn-' + str(t['turn']) + '"><span class="ord">TURN ' + str(t['turn']) + '</span>'
+                 '<h3>' + esc(title.replace('\n', ' ')[:300]) + '</h3>', notes_html(db, 'turn', t['key'])]
+        for path, f in t['files'].items():
+            patch = net_diff(db, path, f['before'], f['after'])
+            block.append('<details open><summary>' + esc(path) + ' <span class="badge">' + esc('; '.join(f['evidence'])) + '</span></summary>'
+                         + (diff_html(patch) if patch else '<p class="muted">No net change: edits cancelled out.</p>')
+                         + ''.join(notes_html(db, 'change', c) for c in f['change_ids'])
+                         + note_form(ui, 'change', f['change_ids'][-1], 'Add a note on this file change') + '</details>')
+        block.append(note_form(ui, 'turn', t['turn'], 'Add a note on this turn'))
+        files = since_turn(db, turns, t['turn'])
+        if t['turn'] < len(turns) or len(files) > len(t['files']):
+            parts = []
+            for path, f in files.items():
+                patch = net_diff(db, path, f['before'], f['after'])
+                parts.append('<h4>' + esc(path) + ' <span class="muted">(turns ' + ', '.join(map(str, f['turns'])) + ')</span></h4>'
+                             + (diff_html(patch) if patch else '<p class="muted">No net change.</p>'))
+            block.append('<details class="since"><summary>Everything changed since this turn (through turn ' + str(len(turns)) + ')</summary>' + ''.join(parts) + '</details>')
+        block.append('</section>')
+        out.append(''.join(block))
+    return ''.join(out)
+
+
+def blame_html(db, root, turns):
+    esc = html.escape
+    if not root: return '<p class="muted">No repository root recorded.</p>'
+    owner = {}
+    for t in turns:
+        for f in t['files'].values():
+            for c in f['change_ids']: owner[c] = t['turn']
+    paths = []
+    for t in turns:
+        for path in t['files']:
+            if path not in paths: paths.append(path)
+    out = []
+    for path in paths[:20]:
+        if git_text(root, ['ls-files', '--error-unmatch', '--', path]) is None: continue
+        try:
+            result = blame_file(db, root, path)
+        except SystemExit:
+            continue
+        groups = ''
+        for g in result['groups'][:400]:
+            span = 'L' + str(g['start']) + ('-' + str(g['end']) if g['end'] != g['start'] else '')
+            subject = esc((g.get('commit_info') or {}).get('subject', ''))
+            if g['matched'] == 'exact':
+                turn = owner.get(g.get('change_id'))
+                who = ('<a href="#turn-' + str(turn) + '">Turn ' + str(turn) + '</a> ' if turn else '') + esc((g.get('prompt') or '(no prompt association)').replace('\n', ' ')[:140]) \
+                    + ' <span class="badge">' + esc(g.get('evidence')) + '</span>'
+                cls = 'grp'
+            else:
+                who = esc(g.get('reason', 'no recorded match')); cls = 'grp none'
+            numbered = ''.join('<span class="diff">' + str(g['start'] + i).rjust(4) + '  ' + esc(line) + '</span>' for i, line in enumerate(g['lines'][:200]))
+            groups += ('<div class="' + cls + '"><header>' + span + ' &middot; ' + esc(g['commit'][:8]) + ' ' + subject + ' &middot; ' + who + '</header><pre>' + numbered + '</pre></div>')
+        out.append('<details' + (' open' if not out else '') + '><summary>' + esc(path) + '</summary>' + groups + '</details>')
+    if not out: return '<p class="muted">No recorded file is tracked in git yet, so there is nothing to blame.</p>'
+    return ''.join(out) + '<p class="muted">A line is linked only when its commit holds content exactly matching a recorded snapshot and a recorded change added that line. Blank lines are shown with the group above. Repeated identical lines can be attributed to the wrong recorded change.</p>'
+
+
+def build_page(db, ui=None):
     esc = lambda s: html.escape(str(s or ''))
     ords = thread_ordinals(db)
     rows = db.execute('SELECT c.*,e.kind,e.session,e.prompt,e.body FROM changes c LEFT JOIN events e ON c.event=e.id ORDER BY c.id').fetchall()
@@ -420,7 +519,8 @@ def build_page(db):
                 '<small>CHANGE ' + str(r['id']) + ' / ' + esc(body.get('host', 'claude')) + ' / ' + esc(r['kind']) + '</small></header>'
                 '<details open><summary>Recorded code change</summary><pre>' + esc(r['patch']) + '</pre></details>'
                 '<details><summary>Recorded boundary evidence</summary><pre>' + esc(json.dumps(body, indent=2)) + '</pre>'
-                '<p>Before ' + esc(r['before_hash'] or 'absent') + '<br>After ' + esc(r['after_hash'] or 'absent') + '</p></details></article>')
+                '<p>Before ' + esc(r['before_hash'] or 'absent') + '<br>After ' + esc(r['after_hash'] or 'absent') + '</p></details>'
+                + notes_html(db, 'change', r['id']) + note_form(ui, 'change', r['id']) + '</article>')
 
     by_prompt = {}
     for r in rows:
@@ -456,20 +556,18 @@ def build_page(db):
     timeline = ''.join('<details><summary>' + esc(r['kind']) + '</summary><pre>' + esc(json.dumps(json.loads(r['body']), indent=2)) + '</pre></details>' for r in events)
     gaps = db.execute('SELECT gaps FROM snapshots ORDER BY id DESC LIMIT 1').fetchone()
     gaps_text = '\n'.join(json.loads(gaps[0])) if gaps else ''
-    page = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>REPOTITLE</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:960px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}h2{margin:28px 0 8px;font-size:24px}h3{margin:10px 0 4px;font:600 17px monospace;overflow-wrap:anywhere}p{line-height:1.6}.repo{font-size:18px;margin:0 0 14px}.repo strong{font-family:monospace}.summary{color:#5a6b65}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.legend{font-size:13px;color:#5a6b65}svg{display:block;max-width:100%;height:auto;background:white;border:1px solid #d5ded8;border-radius:10px;margin:8px 0 16px}a{text-decoration:none}.thread{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 22px;padding:18px 20px}.bubble{max-width:82%;padding:10px 14px;border-radius:12px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}.bubble.user{background:#e3ecf7}.bubble.agent{background:#e7efe9}.muted{color:#7d8a83;font-size:14px}.change{border-top:1px solid #e1e7e3;margin-top:10px;padding-top:8px}article.change header small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}details{border-top:1px solid #e1e7e3;padding:10px 0}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px;margin:6px 0 14px}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.bubble{max-width:100%}}</style><main><div class="eyebrow">SYLP / PROVENANCE</div><h1>How this code came to be.</h1><p class="repo">Repository: <strong>REPONAME</strong> <span class="muted">REPOPATH</span></p><p>Every recorded change, connected to the prompt and tool action behind it. Evidence first. Unknowns stay unknown.</p>SUMMARYUSAGE<div class="notice">Tool-linked means temporal and named-file evidence, not guaranteed authorship. Nothing here is uploaded.</div>EVOLUTION<h2 id="threads">The conversations behind the changes</h2><label for="filter">Find a file</label><input id="filter" placeholder="e.g. retry.py">THREADSUNLINKED<h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured. Full transcript import and inline message-to-hunk navigation are not implemented.</p>TIMELINE<details><summary>Capture policy gaps</summary><pre>GAPS</pre></details><footer>Local SQLite + content-addressed snapshots. No model calls, telemetry, remote assets or repository commits. This exported HTML contains captured code and prompt text; treat it as private.</footer></main><script>document.getElementById('filter').addEventListener('input',e=>{for(const a of document.querySelectorAll('.change'))a.hidden=!a.dataset.path.toLowerCase().includes(e.target.value.toLowerCase())})</script></html>'''
+    page = '''<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><title>REPOTITLE</title><style>*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1d2826;font:16px system-ui,sans-serif}main{max-width:960px;margin:auto;padding:44px 24px}.eyebrow{font:12px monospace;letter-spacing:.12em;color:#486a60}h1{font-size:40px;letter-spacing:-.04em;margin:12px 0}h2{margin:28px 0 8px;font-size:24px}h3{margin:10px 0 4px;font:600 17px monospace;overflow-wrap:anywhere}p{line-height:1.6}.repo{font-size:18px;margin:0 0 14px}.repo strong{font-family:monospace}.summary{color:#5a6b65}.notice{border-left:3px solid #b67d30;padding:12px 18px;background:#fff8e9;margin:24px 0}.legend{font-size:13px;color:#5a6b65}svg{display:block;max-width:100%;height:auto;background:white;border:1px solid #d5ded8;border-radius:10px;margin:8px 0 16px}a{text-decoration:none}.thread{background:white;border:1px solid #d5ded8;border-radius:10px;margin:0 0 22px;padding:18px 20px}.bubble{max-width:82%;padding:10px 14px;border-radius:12px;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}.bubble.user{background:#e3ecf7}.bubble.agent{background:#e7efe9}.muted{color:#7d8a83;font-size:14px}.change{border-top:1px solid #e1e7e3;margin-top:10px;padding-top:8px}article.change header small{color:#5a6b65;font:11px monospace}.badge{font:11px monospace;background:#eaf0eb;padding:5px 7px;display:inline-block;max-width:100%;overflow-wrap:anywhere}details{border-top:1px solid #e1e7e3;padding:10px 0}summary{cursor:pointer;font-weight:600;font-size:14px}pre{font:13px/1.6 ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7f4;padding:16px;border-radius:6px}details p{font:11px monospace;overflow-wrap:anywhere}input{padding:12px;width:100%;border:1px solid #a4b5ad;background:white;border-radius:7px;margin:6px 0 14px}footer{margin-top:40px;font-size:13px;color:#52695e}@media(max-width:700px){main{padding:24px 16px}h1{font-size:30px}.bubble{max-width:100%}}</style><main><div class="eyebrow">SYLP / PROVENANCE</div><h1>How this code came to be.</h1><p class="repo">Repository: <strong>REPONAME</strong> <span class="muted">REPOPATH</span></p><p>Every recorded change, connected to the prompt and tool action behind it. Evidence first. Unknowns stay unknown.</p>SUMMARYUSAGE<div class="notice">Tool-linked means temporal and named-file evidence, not guaranteed authorship. Nothing here is uploaded.</div>EVOLUTION<h2 id="turns">What each prompt changed</h2><p>Net change per file for each prompt, and everything changed since any turn. Evidence labels describe association, not proven authorship.</p>TURNS<h2 id="blame">Who wrote each line</h2><p>git blame joined to recorded prompts. Lines are linked only on an exact content match.</p>BLAME<h2 id="threads">The conversations behind the changes</h2><label for="filter">Find a file</label><input id="filter" placeholder="e.g. retry.py">THREADSUNLINKED<h2>Recorded conversation boundaries</h2><p>Only submitted prompts, selected hook fields and final assistant text supplied to Stop are captured. Full transcript import and inline message-to-hunk navigation are not implemented.</p>TIMELINE<details><summary>Capture policy gaps</summary><pre>GAPS</pre></details><footer>Local SQLite + content-addressed snapshots. No model calls, telemetry, remote assets or repository commits. This exported HTML contains captured code and prompt text; treat it as private.</footer></main><script>document.getElementById('filter').addEventListener('input',e=>{for(const a of document.querySelectorAll('.change'))a.hidden=!a.dataset.path.toLowerCase().includes(e.target.value.toLowerCase())})</script></html>'''
     root = meta(db, 'root') or ''
     repo_name = Path(root).name if root else 'unknown repository'
-    page = (page.replace('REPOTITLE', esc('Sylp / ' + repo_name + ' / How this code came to be'))
-                .replace('REPONAME', esc(repo_name))
-                .replace('REPOPATH', esc(root))
-                .replace('SUMMARY', summary)
-                .replace('USAGE', usage_block(db, len(commits)))
-                .replace('EVOLUTION', evolution(db))
-                .replace('THREADS', ''.join(threads_html) or '<p class="muted">No recorded conversations yet.</p>')
-                .replace('UNLINKED', ('<h3>Changes without a recorded prompt</h3>' + unlinked) if unlinked else '')
-                .replace('TIMELINE', timeline)
-                .replace('GAPS', esc(gaps_text or 'No policy gaps reported in last snapshot.')))
-    return page
+    values = {'REPOTITLE': esc('Sylp / ' + repo_name + ' / How this code came to be'), 'REPONAME': esc(repo_name), 'REPOPATH': esc(root),
+              'SUMMARY': summary, 'USAGE': usage_block(db, len(commits)), 'EVOLUTION': evolution(db),
+              'TURNS': turns_html(db, ui), 'BLAME': blame_html(db, root, turn_diffs(db)),
+              'THREADS': ''.join(threads_html) or '<p class="muted">No recorded conversations yet.</p>',
+              'UNLINKED': ('<h3>Changes without a recorded prompt</h3>' + unlinked) if unlinked else '',
+              'TIMELINE': timeline, 'GAPS': esc(gaps_text or 'No policy gaps reported in last snapshot.')}
+    # One pass, so recorded text that happens to contain a placeholder word is never substituted.
+    page = re.sub('|'.join(values), lambda m: values[m.group(0)], page)
+    return page.replace('</style>', EXTRA_CSS + '</style>', 1)
 
 def render(db, output):
     target = Path(output)
@@ -493,8 +591,40 @@ def serve(directory, port):
         return found
 
     esc = lambda s: html.escape(str(s or ''))
+    import secrets, hmac
+    from urllib.parse import parse_qs
+    token = secrets.token_hex(16)
+    allowed_hosts = {'127.0.0.1:' + str(port), 'localhost:' + str(port)}
 
     class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            m = re.match(r'^/repo/(\d+)/note$', self.path)
+            dbs = load()
+            def fail(code, msg):
+                self.send_response(code); self.send_header('Content-Type', 'text/plain'); self.end_headers(); self.wfile.write(msg.encode())
+            origin = self.headers.get('Origin')
+            if self.headers.get('Host') not in allowed_hosts or (origin and origin not in {'http://' + h for h in allowed_hosts}):
+                return fail(403, 'forbidden')
+            if not m or int(m.group(1)) >= len(dbs): return fail(404, 'not found')
+            length = int(self.headers.get('Content-Length') or 0)
+            if length > 8192: return fail(413, 'note too large')
+            form = parse_qs(self.rfile.read(length).decode('utf-8', 'replace'))
+            get = lambda k: (form.get(k) or [''])[0]
+            if not hmac.compare_digest(get('token'), token): return fail(403, 'bad token; reload the page')
+            body, kind, target = get('body').strip(), get('kind'), get('target')
+            if not body or len(body) > NOTE_LIMIT or kind not in ('turn', 'change') or not target.isdigit():
+                return fail(400, 'invalid note')
+            path = dbs[int(m.group(1))][0]
+            writable = connect(str(path))
+            try:
+                add_note(writable, kind, target, body)
+                anchor = ('turn-' + target) if kind == 'turn' else 'change-' + target
+            except SystemExit as exc:
+                return fail(400, str(exc))
+            finally:
+                writable.close()
+            self.send_response(303); self.send_header('Location', '/repo/' + m.group(1) + '#' + anchor); self.end_headers()
+
         def send_html(self, text):
             body = text.encode()
             self.send_response(200)
@@ -530,10 +660,12 @@ def serve(directory, port):
             m = re.match(r'^/repo/(\d+)$', self.path)
             if m and int(m.group(1)) < len(dbs):
                 path, _root, db = dbs[int(m.group(1))]
-                page = build_page(db)
-                page = page.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta http-equiv="refresh" content="10">', 1)
-                page = page.replace('</main>', '<p class="muted"><a href="/">All recorded repositories</a> &middot; served read-only from '
-                                    + esc(str(path)) + '</p></main>', 1)
+                page = build_page(db, {'token': token, 'action': '/repo/' + m.group(1) + '/note'})
+                page = page.replace("script-src 'unsafe-inline'", "script-src 'unsafe-inline'; form-action 'self'", 1)
+                # Refresh to show live captures, but never while a note is being typed.
+                page = page.replace('</script>', "setInterval(()=>{if(![...document.querySelectorAll('.noteform input[type=text]')].some(i=>i.value||i===document.activeElement))location.reload()},10000)</script>", 1)
+                page = page.replace('</main>', '<p class="muted"><a href="/">All recorded repositories</a> &middot; served from '
+                                    + esc(str(path)) + '. Read-only except for notes you add here.</p></main>', 1)
                 self.send_html(page)
                 return
             self.send_response(404)
@@ -544,7 +676,7 @@ def serve(directory, port):
 
     server = HTTPServer(('127.0.0.1', port), Handler)
     url = 'http://127.0.0.1:' + str(port) + '/'
-    print('Serving read-only provenance view at ' + url + ' (Ctrl+C to stop)')
+    print('Serving provenance view (read-only except for notes you add) at ' + url + ' (Ctrl+C to stop)')
     try:
         import webbrowser
         webbrowser.open(url)
@@ -554,6 +686,175 @@ def serve(directory, port):
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+
+
+def turn_key(session, prompt):
+    return json.dumps([session or '', prompt or ''])
+
+
+def turn_diffs(db):
+    """Net change per recorded turn (one prompt in one session), in order of first change.
+    Each file's diff runs from its content before the turn's first recorded change to its content after the last.
+    Evidence labels are kept per file; a turn with no recorded prompt is shown as such, never guessed."""
+    rows = db.execute('SELECT c.id,c.path,c.before_hash,c.after_hash,c.evidence,e.session,e.prompt FROM changes c '
+                      'JOIN events e ON c.event=e.id ORDER BY c.id').fetchall()
+    turns, index = [], {}
+    for r in rows:
+        key = turn_key(r['session'], r['prompt'])
+        if key not in index:
+            index[key] = {'turn': len(turns) + 1, 'key': key, 'session': r['session'], 'prompt_id': r['prompt'] or '',
+                          'prompt': prompt_text_for(db, r['prompt']) if r['prompt'] else None, 'files': {}}
+            turns.append(index[key])
+        f = index[key]['files'].setdefault(r['path'], {'before': r['before_hash'], 'after': r['after_hash'],
+                                                       'evidence': [], 'change_ids': []})
+        f['after'] = r['after_hash']
+        f['change_ids'].append(r['id'])
+        if r['evidence'] not in f['evidence']: f['evidence'].append(r['evidence'])
+    return turns
+
+
+def net_diff(db, path, before, after):
+    if before == after: return ''
+    return ''.join(difflib.unified_diff(textfor(db, before).splitlines(True), textfor(db, after).splitlines(True),
+                                        fromfile='before/' + path, tofile='after/' + path))
+
+
+def since_turn(db, turns, n):
+    """Combined change from before turn n's first change to the latest recorded state."""
+    files = {}
+    for t in turns:
+        if t['turn'] < n: continue
+        for path, f in t['files'].items():
+            g = files.setdefault(path, {'before': f['before'], 'after': f['after'], 'evidence': [], 'turns': []})
+            g['after'] = f['after']
+            g['turns'].append(t['turn'])
+            for e in f['evidence']:
+                if e not in g['evidence']: g['evidence'].append(e)
+    return files
+
+
+def notes_for(db, kind, target):
+    return [r['body'] for r in db.execute('SELECT body FROM notes WHERE kind=? AND target=? ORDER BY id', (kind, str(target)))]
+
+
+def render_turns(db, since=None, include_prompts=True):
+    turns = turn_diffs(db)
+    if not turns: return 'No recorded changes yet.\n'
+    out = []
+    if since is not None:
+        if since < 1 or since > len(turns): raise SystemExit('turn must be between 1 and ' + str(len(turns)))
+        files = since_turn(db, turns, since)
+        out.append('# Changes since turn ' + str(since) + ' (net, through turn ' + str(len(turns)) + ')')
+        for path, f in files.items():
+            patch = net_diff(db, path, f['before'], f['after'])
+            out.append('\n## ' + path + ' (turns ' + ', '.join(map(str, f['turns'])) + '; evidence: ' + '; '.join(f['evidence']) + ')')
+            out.append(patch if patch else 'no net change (edits cancelled out)')
+        return '\n'.join(out) + '\n'
+    out.append('# Per-turn changes (net per file; evidence labels describe association, not proven authorship)')
+    for t in turns:
+        text = t['prompt'] if t['prompt'] else '(no recorded prompt for this turn)'
+        if t['prompt'] and not include_prompts: text = '[redacted]'
+        out.append('\n## Turn ' + str(t['turn']) + ': ' + text.replace('\n', ' ')[:200])
+        if include_prompts:
+            for note in notes_for(db, 'turn', t['key']): out.append('note: ' + note)
+        for path, f in t['files'].items():
+            out.append('\n### ' + path + ' (evidence: ' + '; '.join(f['evidence']) + ')')
+            if include_prompts:
+                for cid in f['change_ids']:
+                    for note in notes_for(db, 'change', cid): out.append('note (change ' + str(cid) + '): ' + note)
+            patch = net_diff(db, path, f['before'], f['after'])
+            out.append(patch if patch else 'no net change (edits cancelled out)')
+    return '\n'.join(out) + '\n'
+
+
+def blame_file(db, root, path):
+    """Line-level join: git blame each line, then match the blamed commit's file content to a recorded snapshot.
+    Only exact content matches are reported as linked; everything else says what is missing."""
+    root = Path(root).resolve()
+    rel = os.path.relpath(str(Path(path).resolve()), str(root)) if os.path.isabs(str(path)) else str(path)
+    out = git_text(root, ['blame', '--porcelain', '--', rel])
+    if out is None: raise SystemExit('git blame failed for ' + rel + '; is it tracked?')
+    lines, commit, final = [], None, 0
+    for raw in out.splitlines():
+        if raw.startswith('\t'):
+            lines.append({'line': final, 'commit': commit, 'text': raw[1:]})
+        else:
+            parts = raw.split(' ')
+            if len(parts[0]) == 40 and all(c in '0123456789abcdef' for c in parts[0]) and len(parts) >= 3:
+                commit, final = parts[0], int(parts[2])
+    cache = {}
+    def commit_link(sha):
+        if sha in cache: return cache[sha]
+        info = {'matched': 'none'}
+        if set(sha) == {'0'}:
+            info['reason'] = 'uncommitted line'
+        else:
+            info['commit_info'] = commit_subject(root, sha)
+            blob = git_text(root, ['rev-parse', sha + ':' + rel])
+            row = match_change_to_blob(db, rel, blob.strip() if blob else None)
+            if row: info['row'] = row
+            else: info['reason'] = 'no recorded session produced this exact content'
+        cache[sha] = info
+        return info
+    added = {}
+    def adder(row, text):
+        """Latest recorded change on this path, up to the commit's matching change, whose patch added this exact line."""
+        if not text.strip(): return None
+        for c in reversed([r for r in changes_for_path(db, rel) if r['id'] <= row['id']]):
+            if c['id'] not in added:
+                patch = db.execute('SELECT patch FROM changes WHERE id=?', (c['id'],)).fetchone()[0] or ''
+                added[c['id']] = {l[1:] for l in patch.splitlines(True) if l.startswith('+') and not l.startswith('+++')}
+            if text + '\n' in added[c['id']] or text in added[c['id']]: return c
+        return None
+    groups = []
+    for l in lines:
+        base = commit_link(l['commit'])
+        info = {k: v for k, v in base.items() if k != 'row'}
+        if 'row' in base:
+            hit = adder(base['row'], l['text'])
+            if hit:
+                info = dict(describe_change(db, hit), matched='exact', commit_info=base.get('commit_info'))
+            else:
+                info = {'matched': 'none', 'commit_info': base.get('commit_info'),
+                        'reason': 'commit content matches a recorded snapshot, but no recorded change added this line (or it is repeated text)'}
+        if 'row' in base and not l['text'].strip() and groups and groups[-1]['commit'] == l['commit'] \
+                and groups[-1]['matched'] == 'exact' and groups[-1]['end'] + 1 == l['line']:
+            groups[-1]['end'] = l['line']; groups[-1]['lines'].append(l['text'])  # blank line: shown with the group above
+            continue
+        key = (l['commit'], info.get('change_id'), info['matched'], info.get('reason'))
+        if groups and groups[-1]['key'] == key and groups[-1]['end'] + 1 == l['line']:
+            groups[-1]['end'] = l['line']; groups[-1]['lines'].append(l['text'])
+        else:
+            groups.append(dict(info, commit=l['commit'], key=key, start=l['line'], end=l['line'], lines=[l['text']]))
+    for g in groups: g.pop('key')
+    return {'path': rel, 'groups': groups, 'caveats': ['Evidence labels describe recorded association, not proven authorship.',
+            'A line is linked only when its commit holds content exactly matching a recorded snapshot, and the line text was added by a recorded change. Blank lines are shown with the group above. Repeated identical lines can be attributed to the wrong recorded change.']}
+
+
+def render_blame(result, include_prompts=True):
+    out = ['# Blame with provenance: ' + result['path']]
+    for g in result['groups']:
+        span = str(g['start']) + ('-' + str(g['end']) if g['end'] != g['start'] else '')
+        subject = (g.get('commit_info') or {}).get('subject', '')
+        head = 'lines ' + span + ': ' + g['commit'][:8]
+        if g['matched'] == 'exact':
+            prompt = g.get('prompt') or '(no prompt association)'
+            if g.get('prompt') and not include_prompts: prompt = '[redacted]'
+            out.append(head + ' ' + str(subject) + ' | prompt: ' + prompt.replace('\n', ' ')[:160] + ' | evidence: ' + str(g.get('evidence')))
+        else:
+            out.append(head + ' ' + str(subject) + ' | ' + g.get('reason', 'no recorded match'))
+    out.extend('note: ' + c for c in result['caveats'])
+    return '\n'.join(out) + '\n'
+
+
+def add_note(db, kind, target, body):
+    if kind == 'turn':
+        turns = turn_diffs(db)
+        if not 1 <= int(target) <= len(turns): raise SystemExit('turn must be between 1 and ' + str(len(turns)))
+        target = turns[int(target) - 1]['key']
+    elif kind == 'change':
+        if not db.execute('SELECT 1 FROM changes WHERE id=?', (int(target),)).fetchone(): raise SystemExit('no such change id')
+    db.execute('INSERT INTO notes(kind,target,body,at) VALUES(?,?,?,?)', (kind, str(target), body, time.time()))
 
 
 def git_blob_id(text):
@@ -652,6 +953,7 @@ def why_lookup(db, root, path, line=None):
     if hit:
         result.update(describe_change(db, hit))
         result['matched'] = 'exact'
+        result['notes'] = notes_for(db, 'change', hit['id'])
         return result
     # Git timestamps have 1-second resolution, so allow slack before calling a recorded change "earlier".
     prior = [r for r in changes_for_path(db, rel) if r['at'] and result['commit'] and r['at'] <= result['commit']['at'] + 120]
@@ -698,6 +1000,9 @@ def pr_summary(db, root, base, head='HEAD', include_prompts=True):
                              + ' - evidence: ' + str(info['evidence']))
                 if info.get('tool'):
                     lines.append('  - tool: ' + str(info['tool']))
+                if include_prompts:
+                    for note in notes_for(db, 'change', row['id']):
+                        lines.append('  - note: ' + note.replace(chr(10), ' ')[:300])
                 prompt = info.get('prompt')
                 if prompt:
                     prompt = prompt if include_prompts else '[redacted: run without --no-prompts to include prompt text]'
@@ -734,7 +1039,22 @@ MCP_TOOLS = [
          'head': {'type': 'string', 'description': 'head ref, default HEAD'},
          'repo': {'type': 'string', 'description': 'repository root; defaults to the server working directory'},
          'include_prompts': {'type': 'boolean', 'description': 'include recorded prompt text; default true'}},
-         'required': ['base']}}]
+         'required': ['base']}},
+    {'name': 'turn_diffs',
+     'description': 'Net file changes per recorded turn (prompt), or everything changed since a given turn. '
+                    'Evidence labels per file; turns without a recorded prompt are shown as such. Contains private prompt text unless include_prompts is false.',
+     'inputSchema': {'type': 'object', 'properties': {
+         'since': {'type': 'integer', 'description': 'optional 1-based turn number: show the combined change since that turn'},
+         'repo': {'type': 'string', 'description': 'repository root; defaults to the server working directory'},
+         'include_prompts': {'type': 'boolean', 'description': 'include recorded prompt text and notes; default true'}}}},
+    {'name': 'blame',
+     'description': 'git blame for a file joined to recorded sessions: per line range, the commit and the recorded prompt '
+                    'and evidence label when the commit content exactly matches a recorded snapshot; otherwise says why not.',
+     'inputSchema': {'type': 'object', 'properties': {
+         'path': {'type': 'string', 'description': 'file path, absolute or relative to the repo'},
+         'repo': {'type': 'string', 'description': 'repository root; defaults to the server working directory'},
+         'include_prompts': {'type': 'boolean', 'description': 'include recorded prompt text; default true'}},
+         'required': ['path']}}]
 
 
 def mcp_reply(msg_id, result=None, error=None):
@@ -757,6 +1077,10 @@ def mcp_call(arguments, which):
     try:
         if which == 'why':
             text = json.dumps(why_lookup(db, repo, arguments['path'], arguments.get('line')), indent=2)
+        elif which == 'turn_diffs':
+            text = render_turns(db, arguments.get('since'), arguments.get('include_prompts', True))
+        elif which == 'blame':
+            text = render_blame(blame_file(db, repo, arguments['path']), arguments.get('include_prompts', True))
         else:
             text = pr_summary(db, repo, arguments['base'], arguments.get('head') or 'HEAD',
                               arguments.get('include_prompts', True))
@@ -795,7 +1119,7 @@ def mcp_main():
         elif method == 'tools/call':
             params = msg.get('params') or {}
             name = params.get('name', '')
-            if name in ('why', 'pr_summary'):
+            if name in ('why', 'pr_summary', 'turn_diffs', 'blame'):
                 resp = mcp_reply(msg_id, mcp_call(params.get('arguments') or {}, name))
             else:
                 resp = mcp_reply(msg_id, error={'code': -32602, 'message': 'unknown tool: ' + name})
@@ -820,6 +1144,13 @@ def main():
     why.add_argument('--repo', default='.'); why.add_argument('--json', action='store_true')
     pr = sub.add_parser('pr-summary'); pr.add_argument('base'); pr.add_argument('head', nargs='?', default='HEAD')
     pr.add_argument('--repo', default='.'); pr.add_argument('--no-prompts', action='store_true')
+    tn = sub.add_parser('turns', help='net file changes per recorded turn'); tn.add_argument('--since', type=int, default=None)
+    tn.add_argument('--no-prompts', action='store_true')
+    bl = sub.add_parser('blame', help='git blame joined to recorded sessions'); bl.add_argument('path')
+    bl.add_argument('--repo', default='.'); bl.add_argument('--no-prompts', action='store_true')
+    nt = sub.add_parser('note', help='add or list your notes on a turn or change')
+    nt.add_argument('verb', choices=['add', 'list']); nt.add_argument('--turn', type=int); nt.add_argument('--change', type=int)
+    nt.add_argument('--text')
     sub.add_parser('mcp')
     args = parser.parse_args()
     if args.action == 'mcp':
@@ -846,7 +1177,7 @@ def main():
         # Valid no-op hook response, including Codex Stop. Antigravity requires a decision on PreToolUse; allow defers to the default policy.
         print(json.dumps({'decision': 'allow'}) if args.host == 'antigravity' and args.event == 'PreToolUse' else '{}')
         return
-    hint = args.repo if args.action in ('init', 'why', 'pr-summary') else os.getcwd()
+    hint = args.repo if args.action in ('init', 'why', 'pr-summary', 'blame') else os.getcwd()
     db = connect(str(resolve_db(args.db, hint)))
     try:
         if args.action == 'init': initialize(db,args.repo)
@@ -864,6 +1195,17 @@ def main():
                 for note in found['caveats']: print('note: ' + note)
         elif args.action == 'pr-summary':
             sys.stdout.write(pr_summary(db, args.repo, args.base, args.head, not args.no_prompts))
+        elif args.action == 'turns':
+            sys.stdout.write(render_turns(db, args.since, not args.no_prompts))
+        elif args.action == 'blame':
+            sys.stdout.write(render_blame(blame_file(db, args.repo, args.path), not args.no_prompts))
+        elif args.action == 'note':
+            if args.verb == 'list':
+                for r in db.execute('SELECT * FROM notes ORDER BY id'): print(str(r['id']) + ' [' + r['kind'] + ' ' + r['target'] + '] ' + r['body'])
+            else:
+                text = args.text
+                if not text or (args.turn is None) == (args.change is None): raise SystemExit('note add needs --text and exactly one of --turn N or --change ID')
+                add_note(db, 'turn' if args.turn is not None else 'change', args.turn if args.turn is not None else args.change, text)
         elif args.action == 'render':
             if not meta(db, 'root'):
                 repos_dir = Path.home()/'.sylp-provenance'/'repos'

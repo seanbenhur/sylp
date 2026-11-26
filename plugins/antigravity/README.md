@@ -5,7 +5,7 @@ Local-first code provenance: records each prompt and tool-call boundary on your 
 ## What it does
 
 - Lifecycle hooks (`hooks.json`) capture prompts and tool-call boundaries into a local SQLite database per repo under `~/.sylp-provenance/repos/`, created automatically on the first hook event.
-- A stdio MCP server (`mcp_config.json`) adds two tools: `why` (trace a file, line or symbol back to the prompt that wrote it) and `pr_summary` (assemble the prompts and diffs behind a branch).
+- A stdio MCP server (`mcp_config.json`) adds four tools: `why` (trace a file, line or symbol back to the prompt that wrote it) and `pr_summary` (assemble the prompts and diffs behind a branch), `turn_diffs` (net file changes per prompt, or everything since a given turn) and `blame` (git blame joined to recorded prompts, exact matches only).
 - Skills: `serve-dashboard` starts a read-only dashboard on localhost, `demo` builds a synthetic showcase session, and `pr-evidence` drafts a per-file provenance summary. It never opens a PR by itself.
 
 ## Install
