@@ -17,6 +17,6 @@ claude plugin install sylp-provenance@sylp-provenance
 
 ## Support and privacy
 
-Hook capture has run in live Claude Code sessions. 44 automated tests cover the recorder and adapters against fixtures. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
+Hook capture has run in live Claude Code sessions. 54 automated tests cover the recorder and adapters against fixtures. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
 
 License: Apache-2.0 (see the repository root).
