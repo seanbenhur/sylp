@@ -1,0 +1,49 @@
+{
+  "sylp-provenance": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "python3 ./recorder.py hook --host antigravity --event SessionStart",
+        "timeout": 15
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "python3 ./recorder.py hook --host antigravity --event PreInvocation",
+        "timeout": 15
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./recorder.py hook --host antigravity --event PreToolUse",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./recorder.py hook --host antigravity --event PostToolUse",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 ./recorder.py hook --host antigravity --event Stop",
+        "timeout": 15
+      }
+    ]
+  }
+}
