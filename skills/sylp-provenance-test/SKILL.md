@@ -48,7 +48,7 @@ The hooks create a per-repo capture database under `~/.sylp-provenance/repos/` t
 cd ~/sylp && python3 -m unittest discover -s tests -v
 ```
 
-All 44 checks should pass. Confirm the plugin files landed where the host expects them (marketplace plugin list for Claude Code, `~/.cursor/plugins/local/sylp-provenance/` for Cursor, the codex plugins config for Codex). Tell the user to restart their CLI so the hooks load. Stop here unless they confirmed the quota spend in step 0.
+All 54 checks should pass. Confirm the plugin files landed where the host expects them (marketplace plugin list for Claude Code, `~/.cursor/plugins/local/sylp-provenance/` for Cursor, the codex plugins config for Codex). Tell the user to restart their CLI so the hooks load. Stop here unless they confirmed the quota spend in step 0.
 
 ## 3. One recorded prompt
 
