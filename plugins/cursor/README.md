@@ -14,6 +14,6 @@ Local install: copy this folder to `~/.cursor/plugins/local/sylp-provenance`. On
 
 ## Support and privacy
 
-Tested against fixtures (44 automated tests). The hooks and MCP wiring follow Cursor's docs and have not been run in a live Cursor CLI session yet. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
+Tested against fixtures (54 automated tests). The hooks and MCP wiring follow Cursor's docs and have not been run in a live Cursor CLI session yet. While installed, the plugin records prompts and code from every repo you open; captured text stays local and unencrypted. `recorder.py pause` pauses capture per repo, and uninstalling removes capture entirely.
 
 License: Apache-2.0 (see the repository root).
