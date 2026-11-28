@@ -10,6 +10,10 @@ Local-first code provenance for AI coding agents. Click a change and see the pro
 
 ![Thread: the prompt, agent reply, diff and evidence label for one change](examples/screenshot-thread.svg)
 
+![Per-turn diffs: what each prompt changed, with notes on a turn or file change](examples/screenshot-turns.svg)
+
+![Blame: who wrote each line, git blame joined to the recorded prompt behind it](examples/screenshot-blame.svg)
+
 These screenshots are of the synthetic demo fixture ([examples/history.html](examples/history.html)), not a live agent session.
 
 ## A real run: fixing a bug in openclaw/openclaw
@@ -108,3 +112,4 @@ python3 -m unittest discover -s tests -v
 To verify end to end inside a real host, give your agent the agent-readable skill at [skills/sylp-provenance-test/SKILL.md](skills/sylp-provenance-test/SKILL.md), which has per-host install variants. It installs into a scratch repo, runs one small recorded prompt, reports pass or fail, and states the quota cost first and waits for your go-ahead.
 
 License: Apache-2.0.
+
